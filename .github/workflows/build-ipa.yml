@@ -48,31 +48,36 @@ jobs:
           python3 fearn_ipa_builder.py \
             --name "Fearn" \
             --bundle-id "com.krnlthemodder.fearn" \
-            --version "1.0" \
+            --version "1.7.0" \
             --output "." \
             --verbose
       
       - name: Sign IPA
         run: |
           python3 fearn_signer.py resign \
-            -i Fearn-1.0.ipa \
+            -i Fearn-1.7.0.ipa \
             -c "Fearn Self-Signed" \
-            -o Fearn-1.0-signed.ipa \
+            -o Fearn-1.7.0-signed.ipa \
+            -p certs/Fearn.mobileprovision \
             --verbose
       
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            Fearn-1.0-signed.ipa
+            Fearn-1.7.0-signed.ipa
             certs/Fearn.p12
             certs/Fearn.mobileprovision
-          tag_name: v1.0-${{ github.run_number }}
+          tag_name: v1.7.0-${{ github.run_number }}
           body: |
-            # Fearn v1.0 Build ${{ github.run_number }}
+            # Fearn v1.7.0 Build ${{ github.run_number }}
+            
+            ## 🐛 Major Bugfix Release
+            
+            This release includes critical crash fixes and stability improvements for the IPA signing process.
             
             ## Files
-            - `Fearn-1.0-signed.ipa` - Signed IPA ready for sideloading
+            - `Fearn-1.7.0-signed.ipa` - Signed IPA ready for sideloading
             - `Fearn.p12` - Certificate (Password: fearn123)
             - `Fearn.mobileprovision` - Provisioning profile
             
@@ -83,7 +88,9 @@ jobs:
             3. Install IPA using Xcode or ideviceinstaller
             
             ## Features
-            - ✅ Self-signed certificate
+            - ✅ Improved IPA signing stability
+            - ✅ Fixed crash handling in provisioning profile
+            - ✅ Self-signed certificate with proper entitlements
             - ✅ Provisioning profile with get-task-allow
             - ✅ Ready for sideloading
             - ✅ Debugging enabled
