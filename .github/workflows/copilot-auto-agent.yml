@@ -1,1 +1,67 @@
+name: Copilot Auto Agent
 
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - nightly
+          - issue
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC nightly
+  issues:
+    types:
+      - opened
+      - reopened
+      - labeled
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG || 'false' }}
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Load config
+        id: config
+        run: |
+          node -e "require('./dist/agent/main').printConfig()"
+
+      - name: Run issue-triggered agent
+        if: github.event_name == 'issues'
+        run: |
+          node dist/agent/main.js issue \
+            --issue-number "${{ github.event.issue.number }}" \
+            --event "${{ github.event.action }}"
+
+      - name: Run nightly agent
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'nightly')
+        run: |
+          node dist/agent/main.js nightly
+
+      - name: Run manual/auto agent
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'auto'
+        run: |
+          node dist/agent/main.js auto
