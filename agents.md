@@ -1,1 +1,0 @@
-npm i -g @alibaba-group/open-code-review
