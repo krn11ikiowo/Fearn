@@ -1,1 +1,36 @@
+issues:
+  auto_process_labels:
+    - "bug"
+    - "enhancement"
+    - "good first issue"
+    - "help wanted"
+  skip_labels:
+    - "wontfix"
+    - "duplicate"
+    - "invalid"
+    - "on-hold"
+    - "auto-agent-skip"
 
+code_quality:
+  min_coverage: 75
+  auto_fix: true
+  max_complexity: 10
+
+schedule:
+  nightly:
+    enabled: true
+    time: "02:00"
+
+pr:
+  draft_for_complex_changes: true
+  complex_change_threshold: 300 # lines changed
+
+metrics:
+  enabled: true
+  track:
+    - issues_processed
+    - prs_created
+    - fixes_merged
+    - features_implemented
+    - avg_resolution_time
+    - coverage_delta
