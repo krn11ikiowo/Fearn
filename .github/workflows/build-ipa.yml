@@ -12,97 +12,53 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
       - name: Install dependencies
         run: |
-          brew install openssl zip
-          python -m pip install --upgrade pip
-      
-      - name: Generate certificates and provisioning profile
+          brew install zip
+          python3 -m pip install --upgrade pip
+
+      - name: Build iOS app
         run: |
-          python3 fearn_cert_provisioning_generator.py \
-            --bundle-id "com.krnlthemodder.fearn" \
-            --team-id "XXXXXXXXXX" \
-            --name "Fearn" \
-            --verbose
-      
-      - name: Clean up previous builds
+          xcodebuild \
+            -project Fearn.xcodeproj \
+            -scheme Fearn \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/Fearn.xcarchive \
+            archive
+
+      - name: Export IPA
         run: |
-          rm -rf Payload/
-          rm -f Fearn-*.ipa
-          echo "Cleaned up previous build artifacts"
-      
-      - name: Build IPA
-        run: |
-          echo "Starting IPA build..."
-          python3 fearn_ipa_builder.py \
-            --name "Fearn" \
-            --bundle-id "com.krnlthemodder.fearn" \
-            --version "1.7.0" \
-            --output "." \
-            --validate \
-            --verbose
-          echo "IPA build completed"
-          ls -lah Fearn-*.ipa
-      
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Fearn.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ExportOptions.plist
+
       - name: Sign IPA
         run: |
-          echo "Starting IPA signing..."
           python3 fearn_signer.py resign \
-            -i Fearn-1.7.0.ipa \
+            -i build/Fearn.ipa \
             -c "Fearn Self-Signed" \
-            -o Fearn-1.7.0-signed.ipa \
+            -o Fearn-signed.ipa \
             -p certs/Fearn.mobileprovision \
             --verbose
-          echo "IPA signing completed"
-          ls -lah Fearn-1.7.0-signed.ipa
-      
+
       - name: Verify IPA contents
-        run: |
-          echo "Verifying IPA contents..."
-          unzip -l Fearn-1.7.0-signed.ipa | head -20
-          echo "Total file count in IPA:"
-          unzip -l Fearn-1.7.0-signed.ipa | tail -1
-      
+        run: unzip -l Fearn-signed.ipa | head -20
+
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            Fearn-1.7.0-signed.ipa
-            certs/Fearn.p12
-            certs/Fearn.mobileprovision
+          files: Fearn-signed.ipa
           tag_name: v1.7.0-${{ github.run_number }}
-          body: |
-            # Fearn v1.7.0 Build ${{ github.run_number }}
-            
-            
-            - `Fearn-1.7.0-signed.ipa` - Signed IPA ready for sideloading
-            - `Fearn.p12` - Certificate (Password: fearn123)
-            - `Fearn.mobileprovision` - Provisioning profile
-            
-            ## Installation
-            
-            1. Import `Fearn.p12` into Keychain Access (password: fearn123)
-            2. Trust the certificate
-            3. Install IPA using Xcode or ideviceinstaller
-            
-            ## Features
-            - ✅ Improved IPA signing stability
-            - ✅ Fixed crash handling in provisioning profile
-            - ✅ Self-signed certificate with proper entitlements
-            - ✅ Provisioning profile with get-task-allow
-            - ✅ Ready for sideloading
-            - ✅ Debugging enabled
-            
-            Built on: ${{ github.event.head_commit.timestamp }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
