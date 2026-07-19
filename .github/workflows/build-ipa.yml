@@ -1,4 +1,4 @@
-name: NexStore Sync + Self-Healing iOS Build
+name: NexStore Sync + Self-Healing (No XML Build)
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  sync:
     runs-on: macos-latest
 
     steps:
@@ -18,196 +18,40 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Clone NexStore-new
       - name: Clone NexStore 2
         run: |
           rm -rf nexstore
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
-      # 2. Regenerate missing iOS core files (KEEP existing code)
-      - name: Regenerate missing iOS files
+      - name: Ensure folders exist
         run: |
           mkdir -p Fearn
-          mkdir -p Fearn.xcodeproj
-          mkdir -p certs
+          mkdir -p NexStoreTweaks
+          mkdir -p Fearn/Frameworks
 
-          # AppDelegate.swift
-          if [ ! -f Fearn/AppDelegate.swift ]; then
-            cat > Fearn/AppDelegate.swift << 'EOF'
-import UIKit
-
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool { return true }
-}
-EOF
-          fi
-
-          # SceneDelegate.swift
-          if [ ! -f Fearn/SceneDelegate.swift ]; then
-            cat > Fearn/SceneDelegate.swift << 'EOF'
-import UIKit
-
-class SceneDelegate: UIResponder, UIWindowSceneDelegate {
-    var window: UIWindow?
-}
-EOF
-          fi
-
-          # ViewController.swift
-          if [ ! -f Fearn/ViewController.swift ]; then
-            cat > Fearn/ViewController.swift << 'EOF'
-import UIKit
-
-class ViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .white
-    }
-}
-EOF
-          fi
-
-          # Info.plist
-          if [ ! -f Fearn/Info.plist ]; then
-            cat > Fearn/Info.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict></dict>
-</plist>
-EOF
-          fi
-
-          # ExportOptions.plist
-          if [ ! -f ExportOptions.plist ]; then
-            cat > ExportOptions.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-</dict>
-</plist>
-EOF
-          fi
-
-          # Signing script
-          if [ ! -f fearn_signer.py ]; then
-            cat > fearn_signer.py << 'EOF'
-print("Signer placeholder")
-EOF
-          fi
-
-          # Minimal Xcode project
-          if [ ! -f Fearn.xcodeproj/project.pbxproj ]; then
-            cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
-{
-  archiveVersion = 1;
-  objectVersion = 56;
-  objects = {};
-  rootObject = Project;
-}
-EOF
-          fi
-
-      # 3. Copy NexStore → Fearn (KEEP existing files)
-      - name: Copy NexStore source into Fearn
+      - name: Copy NexStore source
         run: |
-          mkdir -p Fearn
           if [ -d "nexstore/NexStore" ]; then
             cp -R nexstore/NexStore/*.swift Fearn/
           fi
 
-      # 4. Copy Tweaks → NexStoreTweaks
       - name: Copy NexStore tweaks
         run: |
-          mkdir -p NexStoreTweaks
           if [ -d "nexstore/Tweaks" ]; then
             cp -R nexstore/Tweaks/*.swift NexStoreTweaks/
           fi
 
-      # 5. Copy Frameworks → Fearn/Frameworks
       - name: Copy NexStore frameworks
         run: |
-          mkdir -p Fearn/Frameworks
           if [ -d "nexstore/Frameworks" ]; then
             cp -R nexstore/Frameworks/* Fearn/Frameworks/
           fi
 
-      # 6. First push — sync + regen
-      - name: Commit NexStore sync + regen
+      - name: Commit sync
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add Fearn Fearn.xcodeproj NexStoreTweaks ExportOptions.plist fearn_signer.py
-          git commit -m "Sync NexStore + regenerate missing iOS files" || echo "No changes"
+          git add Fearn NexStoreTweaks
+          git commit -m "Sync NexStore (XML removed)" || echo "No changes"
           git push || echo "Nothing to push"
-
-      # 7. Select Xcode
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      # 8. Build IPA
-      - name: Build iOS app
-        run: |
-          xcodebuild \
-            -project Fearn.xcodeproj \
-            -scheme Fearn \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath build/Fearn.xcarchive \
-            archive
-
-      # 9. Export IPA
-      - name: Export IPA
-        run: |
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/Fearn.xcarchive \
-            -exportPath build \
-            -exportOptionsPlist ExportOptions.plist
-
-      # 10. Version bump — second push
-      - name: Version bump
-        run: |
-          if [ ! -f VERSION ]; then echo "1.0.0" > VERSION; fi
-
-          old=$(cat VERSION)
-          major=$(echo "$old" | cut -d. -f1)
-          minor=$(echo "$old" | cut -d. -f2)
-          patch=$(echo "$old" | cut -d. -f3)
-          new_patch=$((patch + 1))
-          new="$major.$minor.$new_patch"
-
-          echo "$new" > VERSION
-
-          git add VERSION
-          git commit -m "Version bump to $new" || echo "No changes"
-          git push || echo "Nothing to push"
-
-      # 11. Sign IPA — third push
-      - name: Sign IPA
-        run: |
-          python3 fearn_signer.py
-          touch Fearn-signed.ipa
-
-          git add Fearn-signed.ipa
-          git commit -m "Add signed IPA" || echo "No changes"
-          git push || echo "Nothing to push"
-
-      # 12. Release IPA
-      - name: Release IPA
-        uses: softprops/action-gh-release@v1
-        with:
-          files: Fearn-signed.ipa
-          tag_name: v${{ github.run_number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
