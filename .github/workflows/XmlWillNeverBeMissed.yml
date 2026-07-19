@@ -1,4 +1,4 @@
-name: Initialize Fearn Folder Structure (Self-Healing)
+name: Initialize Xcode Structure (Self-Healing)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  init-folders:
+  init:
     runs-on: macos-latest
 
     steps:
@@ -16,8 +16,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create required folders
+      - name: Create required folders + placeholder files
         run: |
+          # Create folders
           mkdir -p Fearn
           mkdir -p Fearn.xcodeproj
           mkdir -p Fearn.xcodeproj/project.xcworkspace
@@ -27,7 +28,17 @@ jobs:
           mkdir -p XcodeTemplate
           mkdir -p SwiftTemplate
 
-      - name: Commit folder structure (self-healing)
+          # Create placeholder files ONLY if missing
+          [ ! -f XcodeTemplate/project.pbxproj ] && echo "// placeholder pbxproj" > XcodeTemplate/project.pbxproj
+          [ ! -f XcodeTemplate/Info.plist ] && echo "// placeholder plist" > XcodeTemplate/Info.plist
+          [ ! -f XcodeTemplate/contents.xcworkspacedata ] && echo "// placeholder workspace" > XcodeTemplate/contents.xcworkspacedata
+          [ ! -f XcodeTemplate/Fearn.xcscheme ] && echo "// placeholder scheme" > XcodeTemplate/Fearn.xcscheme
+
+          [ ! -f SwiftTemplate/AppDelegate.swift ] && echo "// placeholder swift" > SwiftTemplate/AppDelegate.swift
+          [ ! -f SwiftTemplate/SceneDelegate.swift ] && echo "// placeholder swift" > SwiftTemplate/SceneDelegate.swift
+          [ ! -f SwiftTemplate/ViewController.swift ] && echo "// placeholder swift" > SwiftTemplate/ViewController.swift
+
+      - name: Commit structure (self-healing)
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -35,11 +46,11 @@ jobs:
           git add Fearn Fearn.xcodeproj NexStoreTweaks XcodeTemplate SwiftTemplate
 
           # Try commit
-          git commit -m "Initialize folder structure" && echo "Commit succeeded" || {
-            echo "No changes detected — creating dummy file to force commit"
-            echo "init-$(date +%s)" > .init_force
-            git add .init_force
-            git commit -m "Force commit: no changes originally"
+          git commit -m "Initialize Xcode folder structure" && echo "Commit succeeded" || {
+            echo "No changes — forcing commit"
+            echo "force-$(date +%s)" > .force_init
+            git add .force_init
+            git commit -m "Forced commit: no changes originally"
           }
 
           # Retry push up to 3 times
