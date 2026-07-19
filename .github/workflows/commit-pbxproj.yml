@@ -1,0 +1,23 @@
+name: Commit Xcode Project File
+on: workflow_dispatch
+permissions:
+  contents: write
+
+jobs:
+  commit-pbxproj:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy pbxproj
+        run: |
+          mkdir -p Fearn.xcodeproj
+          cp XcodeTemplate/project.pbxproj Fearn.xcodeproj/
+
+      - name: Commit pbxproj
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Fearn.xcodeproj/project.pbxproj
+          git commit -m "Add Xcode project.pbxproj" || echo "No changes"
+          git push || echo "Nothing to push"
