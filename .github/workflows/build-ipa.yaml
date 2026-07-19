@@ -1,4 +1,4 @@
-name: Build IPA (Final Workflow)
+name: Final IPA Build (No XML Logic)
 
 on:
   push:
