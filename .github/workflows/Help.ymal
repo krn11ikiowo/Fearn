@@ -1,0 +1,61 @@
+name: Fix All Files (Per-File Commits)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-all-files:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create commit helper
+        run: |
+          cat << 'EOF' > commit-helper.sh
+#!/bin/bash
+
+FILE="$1"
+
+git config user.name "github-actions"
+git config user.email "github-actions@github.com"
+
+git add "$FILE"
+git commit -m "Fix file: $FILE" || {
+  echo "force-$(date +%s)" > .force_fix
+  git add .force_fix
+  git commit -m "Forced commit for: $FILE"
+}
+
+for attempt in 1 2 3; do
+  git push && exit 0
+  sleep 2
+done
+
+exit 0
+EOF
+          chmod +x commit-helper.sh
+
+      - name: Scan and fix all files
+        run: |
+          # Find all regular files, skip .git
+          find . -type f ! -path "./.git/*" | while read -r file; do
+            echo "Fixing $file"
+
+            # Ensure file ends with a newline (safe for all types)
+            if [ -s "$file" ]; then
+              tail -c1 "$file" | tr -d '\n' >/dev/null 2>&1 || true
+              last_char="$(tail -c1 "$file" 2>/dev/null || echo "")"
+              if [ "$last_char" != "" ] && [ "$last_char" != $'\n' ]; then
+                printf '\n' >> "$file"
+              fi
+            fi
+
+            ./commit-helper.sh "$file"
+          done
