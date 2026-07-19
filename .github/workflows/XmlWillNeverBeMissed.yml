@@ -1,4 +1,4 @@
-name: Initialize Fearn Folder Structure
+name: Initialize Fearn Folder Structure (Self-Healing)
 
 on:
   workflow_dispatch:
@@ -27,11 +27,24 @@ jobs:
           mkdir -p XcodeTemplate
           mkdir -p SwiftTemplate
 
-      - name: Commit folder structure
+      - name: Commit folder structure (self-healing)
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git add Fearn Fearn.xcodeproj NexStoreTweaks XcodeTemplate SwiftTemplate
-          git commit -m "Initialize required folder structure for Xcode workflows" || echo "No changes"
-          git push || echo "Nothing to push"
+
+          # Try commit
+          git commit -m "Initialize folder structure" && echo "Commit succeeded" || {
+            echo "No changes detected — creating dummy file to force commit"
+            echo "init-$(date +%s)" > .init_force
+            git add .init_force
+            git commit -m "Force commit: no changes originally"
+          }
+
+          # Retry push up to 3 times
+          for i in 1 2 3; do
+            git push && break
+            echo "Push failed, retrying ($i/3)..."
+            sleep 2
+          done
