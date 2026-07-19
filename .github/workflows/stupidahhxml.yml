@@ -16,13 +16,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create workflow folder
-        run: mkdir -p .github/workflows
-
-      # -------------------------------
+      # ---------------------------------------------------------
       # Commit 1 — init-folders.yml
-      # -------------------------------
-      - name: Add init-folders workflow
+      # ---------------------------------------------------------
+      - name: Create init-folders workflow
         run: |
           cat << 'EOF' > .github/workflows/init-folders.yml
 name: Initialize Fearn Folder Structure
@@ -46,18 +43,29 @@ jobs:
           git push || echo "Nothing to push"
 EOF
 
-      - name: Commit workflow 1
+      - name: Commit workflow 1 (self-healing)
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add .github/workflows/init-folders.yml
-          git commit -m "Add init-folders workflow" || echo "No changes"
-          git push || echo "Nothing to push"
 
-      # -------------------------------
+          git add .github/workflows/init-folders.yml
+          git commit -m "Add init-folders workflow" || {
+            echo "No changes — forcing commit"
+            echo "force-$(date +%s)" > .force_init_1
+            git add .force_init_1
+            git commit -m "Forced commit: init-folders workflow"
+          }
+
+          for i in 1 2 3; do
+            git push && break
+            echo "Push failed, retrying ($i/3)..."
+            sleep 2
+          done
+
+      # ---------------------------------------------------------
       # Commit 2 — commit-swift.yml
-      # -------------------------------
-      - name: Add commit-swift workflow
+      # ---------------------------------------------------------
+      - name: Create commit-swift workflow
         run: |
           cat << 'EOF' > .github/workflows/commit-swift.yml
 name: Commit Swift Files
@@ -72,7 +80,7 @@ jobs:
       - name: Copy Swift files
         run: |
           mkdir -p Fearn
-          cp -R SwiftTemplate/*.swift Fearn/ 2>/dev/null || echo "No Swift files"
+          cp -R SwiftTemplate/*.swift Fearn/ 2>/dev/null || echo "No Swift files found"
       - name: Commit
         run: |
           git config user.name "github-actions"
@@ -82,16 +90,26 @@ jobs:
           git push || echo "Nothing to push"
 EOF
 
-      - name: Commit workflow 2
+      - name: Commit workflow 2 (self-healing)
         run: |
           git add .github/workflows/commit-swift.yml
-          git commit -m "Add commit-swift workflow" || echo "No changes"
-          git push || echo "Nothing to push"
+          git commit -m "Add commit-swift workflow" || {
+            echo "No changes — forcing commit"
+            echo "force-$(date +%s)" > .force_init_2
+            git add .force_init_2
+            git commit -m "Forced commit: commit-swift workflow"
+          }
 
-      # -------------------------------
+          for i in 1 2 3; do
+            git push && break
+            echo "Push failed, retrying ($i/3)..."
+            sleep 2
+          done
+
+      # ---------------------------------------------------------
       # Commit 3 — commit-xcode.yml
-      # -------------------------------
-      - name: Add commit-xcode workflow
+      # ---------------------------------------------------------
+      - name: Create commit-xcode workflow
         run: |
           cat << 'EOF' > .github/workflows/commit-xcode.yml
 name: Commit Xcode Files
@@ -107,7 +125,7 @@ jobs:
         run: |
           mkdir -p Fearn.xcodeproj/project.xcworkspace
           mkdir -p Fearn.xcodeproj/xcshareddata/xcschemes
-          cp XcodeTemplate/* Fearn.xcodeproj/ 2>/dev/null || echo "No Xcode files"
+          cp XcodeTemplate/* Fearn.xcodeproj/ 2>/dev/null || echo "No Xcode files found"
       - name: Commit
         run: |
           git config user.name "github-actions"
@@ -117,16 +135,26 @@ jobs:
           git push || echo "Nothing to push"
 EOF
 
-      - name: Commit workflow 3
+      - name: Commit workflow 3 (self-healing)
         run: |
           git add .github/workflows/commit-xcode.yml
-          git commit -m "Add commit-xcode workflow" || echo "No changes"
-          git push || echo "Nothing to push"
+          git commit -m "Add commit-xcode workflow" || {
+            echo "No changes — forcing commit"
+            echo "force-$(date +%s)" > .force_init_3
+            git add .force_init_3
+            git commit -m "Forced commit: commit-xcode workflow"
+          }
 
-      # -------------------------------
+          for i in 1 2 3; do
+            git push && break
+            echo "Push failed, retrying ($i/3)..."
+            sleep 2
+          done
+
+      # ---------------------------------------------------------
       # Commit 4 — build-ipa.yml
-      # -------------------------------
-      - name: Add build-ipa workflow
+      # ---------------------------------------------------------
+      - name: Create build-ipa workflow
         run: |
           cat << 'EOF' > .github/workflows/build-ipa.yml
 name: Build IPA
@@ -161,8 +189,18 @@ jobs:
             -exportOptionsPlist ExportOptions.plist
 EOF
 
-      - name: Commit workflow 4
+      - name: Commit workflow 4 (self-healing)
         run: |
           git add .github/workflows/build-ipa.yml
-          git commit -m "Add build-ipa workflow" || echo "No changes"
-          git push || echo "Nothing to push"
+          git commit -m "Add build-ipa workflow" || {
+            echo "No changes — forcing commit"
+            echo "force-$(date +%s)" > .force_init_4
+            git add .force_init_4
+            git commit -m "Forced commit: build-ipa workflow"
+          }
+
+          for i in 1 2 3; do
+            git push && break
+            echo "Push failed, retrying ($i/3)..."
+            sleep 2
+          done
