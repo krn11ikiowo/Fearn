@@ -11,126 +11,137 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Helper function for self-healing commits
-      - name: Define commit helper
+      - name: Create commit helper script
         run: |
           cat << 'EOF' > commit-helper.sh
 #!/bin/bash
+
+TARGET="$1"
+MESSAGE="$2"
+
 git config user.name "github-actions"
 git config user.email "github-actions@github.com"
 
-git add "$1"
-git commit -m "$2" || {
+git add "$TARGET"
+git commit -m "$MESSAGE" || {
   echo "force-$(date +%s)" > .force_debug
   git add .force_debug
-  git commit -m "Forced commit: $2"
+  git commit -m "Forced commit: $MESSAGE"
 }
 
-for i in 1 2 3; do
-  git push && break
+for attempt in 1 2 3; do
+  git push && exit 0
   sleep 2
 done
+
+exit 0
 EOF
           chmod +x commit-helper.sh
 
-      # ---------------------------------------------------------
-      # Commit 1 — debug-env.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 1 — debug-env.yml
+      #######################################################################
       - name: Create debug-env workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-env.yml
 name: Debug Environment
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Print environment
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Print environment variables
         run: env
 EOF
 
       - name: Commit debug-env workflow
         run: ./commit-helper.sh ".github/workflows/debug-env.yml" "Add debug-env workflow"
 
-      # ---------------------------------------------------------
-      # Commit 2 — debug-git.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 2 — debug-git.yml
+      #######################################################################
       - name: Create debug-git workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-git.yml
 name: Debug Git
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Git status
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show git status
         run: git status
-      - name: Git log
-        run: git log --oneline -5
+      - name: Show recent commits
+        run: git log --oneline -10
 EOF
 
       - name: Commit debug-git workflow
         run: ./commit-helper.sh ".github/workflows/debug-git.yml" "Add debug-git workflow"
 
-      # ---------------------------------------------------------
-      # Commit 3 — debug-folders.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 3 — debug-folders.yml
+      #######################################################################
       - name: Create debug-folders workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-folders.yml
 name: Debug Folder Structure
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: List repo tree
-        run: |
-          echo "Repo structure:"
-          ls -R .
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: List repository tree
+        run: ls -R .
 EOF
 
       - name: Commit debug-folders workflow
         run: ./commit-helper.sh ".github/workflows/debug-folders.yml" "Add debug-folders workflow"
 
-      # ---------------------------------------------------------
-      # Commit 4 — debug-xcode.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 4 — debug-xcode.yml
+      #######################################################################
       - name: Create debug-xcode workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-xcode.yml
 name: Debug Xcode
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
     steps:
-      - name: Xcode version
+      - name: Show Xcode version
         run: xcodebuild -version
-      - name: List installed SDKs
+      - name: Show available SDKs
         run: xcodebuild -showsdks
 EOF
 
       - name: Commit debug-xcode workflow
         run: ./commit-helper.sh ".github/workflows/debug-xcode.yml" "Add debug-xcode workflow"
 
-      # ---------------------------------------------------------
-      # Commit 5 — debug-nexstore.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 5 — debug-nexstore.yml
+      #######################################################################
       - name: Create debug-nexstore workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-nexstore.yml
 name: Debug NexStore Sync
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
@@ -144,23 +155,25 @@ EOF
       - name: Commit debug-nexstore workflow
         run: ./commit-helper.sh ".github/workflows/debug-nexstore.yml" "Add debug-nexstore workflow"
 
-      # ---------------------------------------------------------
-      # Commit 6 — debug-ipa.yml
-      # ---------------------------------------------------------
+      #######################################################################
+      # COMMIT 6 — debug-ipa.yml
+      #######################################################################
       - name: Create debug-ipa workflow
         run: |
           cat << 'EOF' > .github/workflows/debug-ipa.yml
 name: Debug IPA Build
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 jobs:
   debug:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check for Xcode project
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check Xcode project existence
         run: |
           if [ -d "Fearn.xcodeproj" ]; then
-            echo "Xcode project exists"
+            echo "Xcode project exists:"
             ls -R Fearn.xcodeproj
           else
             echo "Xcode project missing"
