@@ -7,25 +7,221 @@ on:
 
 permissions:
   contents: write
-  actions: write
+  pull-requests: write
+  issues: write
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      - run: brew trust aws/tap
+      # ---------------------------------------------------------
+      # 0. AI MULTI‑PROJECT AGENT (AUTO‑BRANCH, AUTO‑PR, AUTO‑DEPLOY)
+      # ---------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Xcode
+      - name: AI Multi‑Project Agent
+        run: |
+          echo "Scanning README files..."
+
+          readmes=$(find . -maxdepth 4 -type f -iname "README.md")
+          rm -f ai_changes.patch ai_summary.log extracted.txt codeblock.txt
+
+          for file in $readmes; do
+            echo "Processing $file"
+
+            # Extract actionable lines
+            grep -E "^(Feature:|TODO:|FIXME:|Planned:|Version:|Release:|Website:|App:|Source:|Branch:|Deploy:|Publish:|\\- \\[x\\]|\\- \\[ \\])" "$file" > extracted.txt || true
+
+            # Extract code blocks
+            awk '/```/{flag=!flag;next}flag' "$file" > codeblock.txt || true
+
+            # AI reasoning layer
+            echo "Interpreting README with AI..."
+            node << 'EOF' > ai_output.json
+              const fs = require('fs');
+
+              const extracted = fs.existsSync('extracted.txt')
+                ? fs.readFileSync('extracted.txt', 'utf8')
+                : '';
+
+              const code = fs.existsSync('codeblock.txt')
+                ? fs.readFileSync('codeblock.txt', 'utf8')
+                : '';
+
+              const summary = `
+              README Analysis:
+              ----------------
+              Instructions:
+              ${extracted}
+
+              Code to apply:
+              ${code}
+              `;
+
+              fs.writeFileSync('ai_summary.log', summary);
+
+              // AI logic placeholder: generate patch file
+              fs.writeFileSync('ai_changes.patch', code);
+            EOF
+
+            # Detect branch type
+            branch="ai-update-$(date +%s)"
+
+            if grep -q "Website:" extracted.txt; then
+              branch="website-$(date +%s)"
+              mkdir -p website/src website/public
+            elif grep -q "App:" extracted.txt; then
+              branch="app-$(date +%s)"
+              mkdir -p app/src app/assets
+            elif grep -q "Source:" extracted.txt; then
+              branch="source-$(date +%s)"
+            elif grep -q "Planned:" extracted.txt; then
+              branch="experimental-$(date +%s)"
+            fi
+
+            # Attempt patch
+            if [ -s ai_changes.patch ]; then
+              echo "Applying AI-generated patch..."
+              git apply ai_changes.patch 2> patch_error.log || true
+
+              if [ -s patch_error.log ]; then
+                echo "Patch failed — creating issue"
+
+                curl -X POST \
+                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/${{ github.repository }}/issues \
+                  -d "{\"title\": \"AI Patch Failed for $file\", \"body\": \"$(cat patch_error.log)\"}"
+              else
+                echo "Patch applied successfully"
+                changes=true
+              fi
+            fi
+
+            # Only create branch if source files exist
+            if ls *.js *.ts *.swift *.m *.mm *.py *.html *.css *.json 1> /dev/null 2>&1; then
+              echo "Creating branch: $branch"
+              git checkout -b "$branch"
+              git add .
+              git commit -m "AI Agent: Auto-applied README updates + project scaffolding"
+              git push origin "$branch"
+
+              echo "Creating pull request..."
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"AI Agent Update\", \"head\": \"$branch\", \"base\": \"main\"}"
+            else
+              echo "No source files found — skipping branch creation."
+            fi
+
+            # ---------------------------------------------------------
+            # AUTO‑DEPLOY WEBSITE (GitHub Pages)
+            # ---------------------------------------------------------
+            if grep -q "Deploy: website" extracted.txt; then
+              echo "Creating website deployment PR..."
+
+              deploy_branch="deploy-website-$(date +%s)"
+              git checkout -b "$deploy_branch"
+              mkdir -p docs
+              echo "<h1>Website Auto‑Generated</h1>" > docs/index.html
+              git add docs
+              git commit -m "Auto‑generate website for deployment"
+              git push origin "$deploy_branch"
+
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"Deploy Website\", \"head\": \"$deploy_branch\", \"base\": \"main\"}"
+            fi
+
+            # ---------------------------------------------------------
+            # AUTO‑PUBLISH NPM PACKAGE
+            # ---------------------------------------------------------
+            if grep -q "Publish: npm" extracted.txt; then
+              echo "Creating NPM publish PR..."
+
+              npm_branch="publish-npm-$(date +%s)"
+              git checkout -b "$npm_branch"
+              echo "{ \"name\": \"fearn-auto\", \"version\": \"1.0.0\" }" > package.json
+              git add package.json
+              git commit -m "Prepare NPM package"
+              git push origin "$npm_branch"
+
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"Publish NPM Package\", \"head\": \"$npm_branch\", \"base\": \"main\"}"
+            fi
+
+            # ---------------------------------------------------------
+            # AUTO‑PUBLISH PYPI PACKAGE
+            # ---------------------------------------------------------
+            if grep -q "Publish: pypi" extracted.txt; then
+              echo "Creating PyPI publish PR..."
+
+              pypi_branch="publish-pypi-$(date +%s)"
+              git checkout -b "$pypi_branch"
+              echo "from setuptools import setup\nsetup(name='fearn-auto', version='1.0.0')" > setup.py
+              git add setup.py
+              git commit -m "Prepare PyPI package"
+              git push origin "$pypi_branch"
+
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"Publish PyPI Package\", \"head\": \"$pypi_branch\", \"base\": \"main\"}"
+            fi
+
+            # ---------------------------------------------------------
+            # AUTO‑PUBLISH DOCKER IMAGE
+            # ---------------------------------------------------------
+            if grep -q "Publish: docker" extracted.txt; then
+              echo "Creating Docker publish PR..."
+
+              docker_branch="publish-docker-$(date +%s)"
+              git checkout -b "$docker_branch"
+              echo "FROM alpine\nCMD echo Auto Docker Build" > Dockerfile
+              git add Dockerfile
+              git commit -m "Prepare Docker image"
+              git push origin "$docker_branch"
+
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"Publish Docker Image\", \"head\": \"$docker_branch\", \"base\": \"main\"}"
+            fi
+
+          done
+
+      # ---------------------------------------------------------
+      # 1. XCODE SETUP
+      # ---------------------------------------------------------
+      - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      # ---------------------------------------------------------
+      # 2. FIXED DEPENDENCY INSTALL
+      # ---------------------------------------------------------
       - name: Install dependencies
         run: |
-          brew install zip
-          python3 -m pip install --upgrade pip
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install cryptography pyopenssl biplist
 
+      # ---------------------------------------------------------
+      # 3. BUILD iOS APP
+      # ---------------------------------------------------------
       - name: Build iOS app
         run: |
           xcodebuild \
@@ -36,6 +232,9 @@ jobs:
             -archivePath build/Fearn.xcarchive \
             archive
 
+      # ---------------------------------------------------------
+      # 4. EXPORT IPA
+      # ---------------------------------------------------------
       - name: Export IPA
         run: |
           xcodebuild \
@@ -44,8 +243,12 @@ jobs:
             -exportPath build \
             -exportOptionsPlist ExportOptions.plist
 
+      # ---------------------------------------------------------
+      # 5. SIGN IPA
+      # ---------------------------------------------------------
       - name: Sign IPA
         run: |
+          source venv/bin/activate
           python3 fearn_signer.py resign \
             -i build/Fearn.ipa \
             -c "Fearn Self-Signed" \
@@ -53,9 +256,15 @@ jobs:
             -p certs/Fearn.mobileprovision \
             --verbose
 
+      # ---------------------------------------------------------
+      # 6. VERIFY IPA CONTENTS
+      # ---------------------------------------------------------
       - name: Verify IPA contents
         run: unzip -l Fearn-signed.ipa | head -20
 
+      # ---------------------------------------------------------
+      # 7. RELEASE
+      # ---------------------------------------------------------
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
