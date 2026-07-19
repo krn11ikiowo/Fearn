@@ -1,4 +1,4 @@
-name: Auto-Generate iOS App + Build + Sign IPA
+name: Build & Sign IPA
 
 on:
   push:
@@ -15,322 +15,176 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout
+      # ---------------------------------------------------------
+      # 0. AI README INTERPRETER + AUTO BRANCH CREATOR + PR CREATOR
+      # ---------------------------------------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---------------------------------------------------------
-      # 1. AUTO-GENERATE FULL iOS PROJECT + SIGNING PIPELINE
-      # ---------------------------------------------------------
-      - name: Generate full iOS project if missing
+      - name: AI README Agent
         run: |
-          if [ ! -d "Fearn.xcodeproj" ]; then
-            echo "Generating full iOS project..."
+          echo "Scanning README files..."
 
-            mkdir -p Fearn
-            mkdir -p Fearn.xcodeproj
-            mkdir -p Assets.xcassets/AppIcon.appiconset
-            mkdir -p certs
+          readmes=$(find . -maxdepth 4 -type f -iname "README.md")
+          rm -f ai_changes.patch ai_summary.log extracted.txt codeblock.txt
 
-            # ---------------------------------------------------
-            # Swift source files
-            # ---------------------------------------------------
-            cat > Fearn/AppDelegate.swift << 'EOF'
-import UIKit
+          for file in $readmes; do
+            echo "Processing $file"
 
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool { return true }
+            # Extract actionable lines
+            grep -E "^(Feature:|TODO:|FIXME:|Planned:|Version:|Release:|Website:|App:|Branch:|Source:|\\- \\[x\\]|\\- \\[ \\])" "$file" > extracted.txt || true
 
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
-    }
-}
-EOF
+            # Extract code blocks
+            awk '/```/{flag=!flag;next}flag' "$file" > codeblock.txt || true
 
-            cat > Fearn/SceneDelegate.swift << 'EOF'
-import UIKit
+            # AI reasoning layer
+            echo "Interpreting README with AI..."
+            node << 'EOF' > ai_output.json
+              const fs = require('fs');
 
-class SceneDelegate: UIResponder, UIWindowSceneDelegate {
-    var window: UIWindow?
+              const extracted = fs.existsSync('extracted.txt')
+                ? fs.readFileSync('extracted.txt', 'utf8')
+                : '';
 
-    func scene(
-        _ scene: UIScene,
-        willConnectTo session: UISceneSession,
-        options connectionOptions: UIScene.ConnectionOptions
-    ) {
-        guard let windowScene = scene as? UIWindowScene else { return }
-        let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = ViewController()
-        window.makeKeyAndVisible()
-        self.window = window
-    }
-}
-EOF
+              const code = fs.existsSync('codeblock.txt')
+                ? fs.readFileSync('codeblock.txt', 'utf8')
+                : '';
 
-            cat > Fearn/ViewController.swift << 'EOF'
-import UIKit
+              const summary = `
+              README Analysis:
+              ----------------
+              Instructions:
+              ${extracted}
 
-class ViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .white
-    }
-}
-EOF
+              Code to apply:
+              ${code}
+              `;
 
-            # ---------------------------------------------------
-            # Info.plist
-            # ---------------------------------------------------
-            cat > Fearn/Info.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>UIApplicationSceneManifest</key>
-    <dict>
-        <key>UIApplicationSupportsMultipleScenes</key>
-        <false/>
-        <key>UISceneConfigurations</key>
-        <dict>
-            <key>UIWindowSceneSessionRoleApplication</key>
-            <array>
-                <dict>
-                    <key>UISceneConfigurationName</key>
-                    <string>Default Configuration</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-                </dict>
-            </array>
-        </dict>
-    </dict>
-</dict>
-</plist>
-EOF
+              fs.writeFileSync('ai_summary.log', summary);
 
-            # ---------------------------------------------------
-            # ExportOptions.plist
-            # ---------------------------------------------------
-            cat > ExportOptions.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-    <key>compileBitcode</key>
-    <false/>
-</dict>
-</plist>
-EOF
+              // AI logic placeholder: generate patch file
+              fs.writeFileSync('ai_changes.patch', code);
+            EOF
 
-            # ---------------------------------------------------
-            # Signing script
-            # ---------------------------------------------------
-            cat > fearn_signer.py << 'EOF'
-import zipfile
-import shutil
-import os
-import plistlib
-import subprocess
-import argparse
+            # Detect branch type
+            branch="ai-update-$(date +%s)"
 
-def resign(ipa_path, cert_name, output_path, mobileprovision):
-    temp = "temp_payload"
-    if os.path.exists(temp):
-        shutil.rmtree(temp)
-    os.makedirs(temp)
+            if grep -q "Website:" extracted.txt; then
+              branch="website-$(date +%s)"
+            elif grep -q "App:" extracted.txt; then
+              branch="app-$(date +%s)"
+            elif grep -q "Source:" extracted.txt; then
+              branch="source-$(date +%s)"
+            elif grep -q "Planned:" extracted.txt; then
+              branch="experimental-$(date +%s)"
+            fi
 
-    with zipfile.ZipFile(ipa_path, 'r') as z:
-        z.extractall(temp)
+            # Attempt patch
+            if [ -s ai_changes.patch ]; then
+              echo "Applying AI-generated patch..."
+              git apply ai_changes.patch 2> patch_error.log || true
 
-    app_path = None
-    for root, dirs, files in os.walk(temp):
-        for d in dirs:
-            if d.endswith(".app"):
-                app_path = os.path.join(root, d)
+              if [ -s patch_error.log ]; then
+                echo "Patch failed — creating issue"
 
-    shutil.copy(mobileprovision, os.path.join(app_path, "embedded.mobileprovision"))
+                curl -X POST \
+                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/${{ github.repository }}/issues \
+                  -d "{\"title\": \"AI Patch Failed for $file\", \"body\": \"$(cat patch_error.log)\"}"
+              else
+                echo "Patch applied successfully"
+                changes=true
+              fi
+            fi
 
-    subprocess.run([
-        "codesign",
-        "--force",
-        "--sign", cert_name,
-        "--timestamp=none",
-        app_path
-    ])
+            # Only create branch if source files exist
+            if ls *.js *.ts *.swift *.m *.mm *.py *.html *.css *.json 1> /dev/null 2>&1; then
+              echo "Creating branch: $branch"
+              git checkout -b "$branch"
+              git add .
+              git commit -m "AI README Agent: Auto-applied updates"
+              git push origin "$branch"
 
-    shutil.make_archive("temp_signed", "zip", temp)
-    shutil.move("temp_signed.zip", output_path)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("resign")
-    parser.add_argument("-i")
-    parser.add_argument("-c")
-    parser.add_argument("-o")
-    parser.add_argument("-p")
-    args = parser.parse_args()
-
-    resign(args.i, args.c, args.o, args.p)
-EOF
-
-            # ---------------------------------------------------
-            # Minimal Xcode project file
-            # ---------------------------------------------------
-            cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
-{
-  archiveVersion = 1;
-  objectVersion = 56;
-  classes = {};
-  objects = {
-
-    Project = {
-      isa = PBXProject;
-      attributes = { LastUpgradeCheck = 1500; };
-      buildConfigurationList = BuildConfigList;
-      mainGroup = MainGroup;
-      targets = (AppTarget);
-    };
-
-    MainGroup = {
-      isa = PBXGroup;
-      children = (AppGroup, ProductsGroup);
-      sourceTree = "<group>";
-    };
-
-    AppGroup = {
-      isa = PBXGroup;
-      name = Fearn;
-      path = Fearn;
-      sourceTree = "<group>";
-      children = (AppDelegateFile, SceneDelegateFile, ViewControllerFile, InfoPlistFile);
-    };
-
-    ProductsGroup = {
-      isa = PBXGroup;
-      name = Products;
-      children = (AppProduct);
-      sourceTree = "<group>";
-    };
-
-    AppProduct = {
-      isa = PBXFileReference;
-      explicitFileType = wrapper.application;
-      path = Fearn.app;
-      sourceTree = BUILT_PRODUCTS_DIR;
-    };
-
-    AppDelegateFile = {
-      isa = PBXFileReference;
-      lastKnownFileType = sourcecode.swift;
-      path = AppDelegate.swift;
-      sourceTree = "<group>";
-    };
-
-    SceneDelegateFile = {
-      isa = PBXFileReference;
-      lastKnownFileType = sourcecode.swift;
-      path = SceneDelegate.swift;
-      sourceTree = "<group>";
-    };
-
-    ViewControllerFile = {
-      isa = PBXFileReference;
-      lastKnownFileType = sourcecode.swift;
-      path = ViewController.swift;
-      sourceTree = "<group>";
-    };
-
-    InfoPlistFile = {
-      isa = PBXFileReference;
-      lastKnownFileType = text.plist.xml;
-      path = Info.plist;
-      sourceTree = "<group>";
-    };
-
-    AppTarget = {
-      isa = PBXNativeTarget;
-      name = Fearn;
-      productName = Fearn;
-      productReference = AppProduct;
-      buildConfigurationList = TargetBuildConfigList;
-      buildPhases = (SourcesPhase, FrameworksPhase, ResourcesPhase);
-    };
-
-    SourcesPhase = {
-      isa = PBXSourcesBuildPhase;
-      files = (AppDelegateBuild, SceneDelegateBuild, ViewControllerBuild);
-    };
-
-    AppDelegateBuild = { isa = PBXBuildFile; fileRef = AppDelegateFile; };
-    SceneDelegateBuild = { isa = PBXBuildFile; fileRef = SceneDelegateFile; };
-    ViewControllerBuild = { isa = PBXBuildFile; fileRef = ViewControllerFile; };
-
-    FrameworksPhase = { isa = PBXFrameworksBuildPhase; files = (); };
-    ResourcesPhase = { isa = PBXResourcesBuildPhase; files = (); };
-
-    BuildConfigList = {
-      isa = XCConfigurationList;
-      buildConfigurations = (DebugConfig, ReleaseConfig);
-    };
-
-    TargetBuildConfigList = {
-      isa = XCConfigurationList;
-      buildConfigurations = (DebugConfig, ReleaseConfig);
-    };
-
-    DebugConfig = {
-      isa = XCBuildConfiguration;
-      buildSettings = {
-        PRODUCT_NAME = Fearn;
-        INFOPLIST_FILE = Fearn/Info.plist;
-        CODE_SIGNING_ALLOWED = NO;
-      };
-    };
-
-    ReleaseConfig = {
-      isa = XCBuildConfiguration;
-      buildSettings = {
-        PRODUCT_NAME = Fearn;
-        INFOPLIST_FILE = Fearn/Info.plist;
-        CODE_SIGNING_ALLOWED = NO;
-      };
-    };
-  };
-  rootObject = Project;
-}
-EOF
-          fi
+              echo "Creating pull request..."
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/pulls \
+                -d "{\"title\": \"AI README Agent Update\", \"head\": \"$branch\", \"base\": \"main\"}"
+            else
+              echo "No source files found — skipping branch creation."
+            fi
+          done
 
       # ---------------------------------------------------------
-      # 2. AUTOMATIC VERSION BUMPING
+      # 1. XCODE SETUP
       # ---------------------------------------------------------
-      - name: Bump Build Version in Info.plist
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      # ---------------------------------------------------------
+      # 2. FIXED DEPENDENCY INSTALL
+      # ---------------------------------------------------------
+      - name: Install dependencies
         run: |
-          echo "Updating build version using Xcode plutil..."
-          
-          # Sets CFBundleVersion (Build Number) to the unique GitHub Action run number
-          plutil -replace CFBundleVersion -string "${{ github.run_number }}" Fearn/Info.plist
-          
-          # (Optional) Updates CFBundleShortVersionString if you want a dynamic marketing version name
-          # plutil -replace CFBundleShortVersionString -string "1.0.${{ github.run_number }}" Fearn/Info.plist
-          
-          echo "New Plist Settings:"
-          plutil -p Fearn/Info.plist
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install cryptography pyopenssl biplist
+
+      # ---------------------------------------------------------
+      # 3. BUILD iOS APP
+      # ---------------------------------------------------------
+      - name: Build iOS app
+        run: |
+          xcodebuild \
+            -project Fearn.xcodeproj \
+            -scheme Fearn \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/Fearn.xcarchive \
+            archive
+
+      # ---------------------------------------------------------
+      # 4. EXPORT IPA
+      # ---------------------------------------------------------
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Fearn.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ExportOptions.plist
+
+      # ---------------------------------------------------------
+      # 5. SIGN IPA
+      # ---------------------------------------------------------
+      - name: Sign IPA
+        run: |
+          source venv/bin/activate
+          python3 fearn_signer.py resign \
+            -i build/Fearn.ipa \
+            -c "Fearn Self-Signed" \
+            -o Fearn-signed.ipa \
+            -p certs/Fearn.mobileprovision \
+            --verbose
+
+      # ---------------------------------------------------------
+      # 6. VERIFY IPA CONTENTS
+      # ---------------------------------------------------------
+      - name: Verify IPA contents
+        run: unzip -l Fearn-signed.ipa | head -20
+
+      # ---------------------------------------------------------
+      # 7. RELEASE
+      # ---------------------------------------------------------
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Fearn-signed.ipa
+          tag_name: v1.7.0-${{ github.run_number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
