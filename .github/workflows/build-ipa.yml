@@ -1,4 +1,4 @@
-name: Build & Sign IPA
+name: Auto-Generate iOS App + Build + Sign IPA
 
 on:
   push:
@@ -15,108 +15,322 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # ---------------------------------------------------------
-      # 0. CHECKOUT
-      # ---------------------------------------------------------
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ---------------------------------------------------------
-      # 1. INSTALL NODE (FOR AI AGENT)
+      # 1. AUTO-GENERATE FULL iOS PROJECT + SIGNING PIPELINE
       # ---------------------------------------------------------
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      # ---------------------------------------------------------
-      # 2. INSTALL DEPENDENCIES FOR AI AGENT
-      # ---------------------------------------------------------
-      - name: Remove corrupted lockfile
-        run: rm -f package-lock.json
-        
-      - name: Install AI agent dependencies
+      - name: Generate full iOS project if missing
         run: |
-          npm install
+          if [ ! -d "Fearn.xcodeproj" ]; then
+            echo "Generating full iOS project..."
+
+            mkdir -p Fearn
+            mkdir -p Fearn.xcodeproj
+            mkdir -p Assets.xcassets/AppIcon.appiconset
+            mkdir -p certs
+
+            # ---------------------------------------------------
+            # Swift source files
+            # ---------------------------------------------------
+            cat > Fearn/AppDelegate.swift << 'EOF'
+import UIKit
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool { return true }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+}
+EOF
+
+            cat > Fearn/SceneDelegate.swift << 'EOF'
+import UIKit
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = ViewController()
+        window.makeKeyAndVisible()
+        self.window = window
+    }
+}
+EOF
+
+            cat > Fearn/ViewController.swift << 'EOF'
+import UIKit
+
+class ViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+    }
+}
+EOF
+
+            # ---------------------------------------------------
+            # Info.plist
+            # ---------------------------------------------------
+            cat > Fearn/Info.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+</dict>
+</plist>
+EOF
+
+            # ---------------------------------------------------
+            # ExportOptions.plist
+            # ---------------------------------------------------
+            cat > ExportOptions.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>development</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>compileBitcode</key>
+    <false/>
+</dict>
+</plist>
+EOF
+
+            # ---------------------------------------------------
+            # Signing script
+            # ---------------------------------------------------
+            cat > fearn_signer.py << 'EOF'
+import zipfile
+import shutil
+import os
+import plistlib
+import subprocess
+import argparse
+
+def resign(ipa_path, cert_name, output_path, mobileprovision):
+    temp = "temp_payload"
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    os.makedirs(temp)
+
+    with zipfile.ZipFile(ipa_path, 'r') as z:
+        z.extractall(temp)
+
+    app_path = None
+    for root, dirs, files in os.walk(temp):
+        for d in dirs:
+            if d.endswith(".app"):
+                app_path = os.path.join(root, d)
+
+    shutil.copy(mobileprovision, os.path.join(app_path, "embedded.mobileprovision"))
+
+    subprocess.run([
+        "codesign",
+        "--force",
+        "--sign", cert_name,
+        "--timestamp=none",
+        app_path
+    ])
+
+    shutil.make_archive("temp_signed", "zip", temp)
+    shutil.move("temp_signed.zip", output_path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("resign")
+    parser.add_argument("-i")
+    parser.add_argument("-c")
+    parser.add_argument("-o")
+    parser.add_argument("-p")
+    args = parser.parse_args()
+
+    resign(args.i, args.c, args.o, args.p)
+EOF
+
+            # ---------------------------------------------------
+            # Minimal Xcode project file
+            # ---------------------------------------------------
+            cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
+{
+  archiveVersion = 1;
+  objectVersion = 56;
+  classes = {};
+  objects = {
+
+    Project = {
+      isa = PBXProject;
+      attributes = { LastUpgradeCheck = 1500; };
+      buildConfigurationList = BuildConfigList;
+      mainGroup = MainGroup;
+      targets = (AppTarget);
+    };
+
+    MainGroup = {
+      isa = PBXGroup;
+      children = (AppGroup, ProductsGroup);
+      sourceTree = "<group>";
+    };
+
+    AppGroup = {
+      isa = PBXGroup;
+      name = Fearn;
+      path = Fearn;
+      sourceTree = "<group>";
+      children = (AppDelegateFile, SceneDelegateFile, ViewControllerFile, InfoPlistFile);
+    };
+
+    ProductsGroup = {
+      isa = PBXGroup;
+      name = Products;
+      children = (AppProduct);
+      sourceTree = "<group>";
+    };
+
+    AppProduct = {
+      isa = PBXFileReference;
+      explicitFileType = wrapper.application;
+      path = Fearn.app;
+      sourceTree = BUILT_PRODUCTS_DIR;
+    };
+
+    AppDelegateFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = AppDelegate.swift;
+      sourceTree = "<group>";
+    };
+
+    SceneDelegateFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = SceneDelegate.swift;
+      sourceTree = "<group>";
+    };
+
+    ViewControllerFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = ViewController.swift;
+      sourceTree = "<group>";
+    };
+
+    InfoPlistFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = text.plist.xml;
+      path = Info.plist;
+      sourceTree = "<group>";
+    };
+
+    AppTarget = {
+      isa = PBXNativeTarget;
+      name = Fearn;
+      productName = Fearn;
+      productReference = AppProduct;
+      buildConfigurationList = TargetBuildConfigList;
+      buildPhases = (SourcesPhase, FrameworksPhase, ResourcesPhase);
+    };
+
+    SourcesPhase = {
+      isa = PBXSourcesBuildPhase;
+      files = (AppDelegateBuild, SceneDelegateBuild, ViewControllerBuild);
+    };
+
+    AppDelegateBuild = { isa = PBXBuildFile; fileRef = AppDelegateFile; };
+    SceneDelegateBuild = { isa = PBXBuildFile; fileRef = SceneDelegateFile; };
+    ViewControllerBuild = { isa = PBXBuildFile; fileRef = ViewControllerFile; };
+
+    FrameworksPhase = { isa = PBXFrameworksBuildPhase; files = (); };
+    ResourcesPhase = { isa = PBXResourcesBuildPhase; files = (); };
+
+    BuildConfigList = {
+      isa = XCConfigurationList;
+      buildConfigurations = (DebugConfig, ReleaseConfig);
+    };
+
+    TargetBuildConfigList = {
+      isa = XCConfigurationList;
+      buildConfigurations = (DebugConfig, ReleaseConfig);
+    };
+
+    DebugConfig = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_NAME = Fearn;
+        INFOPLIST_FILE = Fearn/Info.plist;
+        CODE_SIGNING_ALLOWED = NO;
+      };
+    };
+
+    ReleaseConfig = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_NAME = Fearn;
+        INFOPLIST_FILE = Fearn/Info.plist;
+        CODE_SIGNING_ALLOWED = NO;
+      };
+    };
+  };
+  rootObject = Project;
+}
+EOF
+          fi
 
       # ---------------------------------------------------------
-      # 3. RUN AI MULTI‑PROJECT AGENT
+      # 2. AUTOMATIC VERSION BUMPING
       # ---------------------------------------------------------
-      - name: Run AI Multi‑Project Agent
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+      - name: Bump Build Version in Info.plist
         run: |
-          node agent/agent.js
-
-      # ---------------------------------------------------------
-      # 4. SELECT XCODE
-      # ---------------------------------------------------------
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      # ---------------------------------------------------------
-      # 5. INSTALL PYTHON DEPENDENCIES (SAFE)
-      # ---------------------------------------------------------
-      - name: Install dependencies
-        run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install cryptography pyopenssl biplist
-
-      # ---------------------------------------------------------
-      # 6. BUILD iOS APP
-      # ---------------------------------------------------------
-      - name: Build iOS app
-        run: |
-          xcodebuild \
-            -project Fearn.xcodeproj \
-            -scheme Fearn \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath build/Fearn.xcarchive \
-            archive
-
-      # ---------------------------------------------------------
-      # 7. EXPORT IPA
-      # ---------------------------------------------------------
-      - name: Export IPA
-        run: |
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/Fearn.xcarchive \
-            -exportPath build \
-            -exportOptionsPlist ExportOptions.plist
-
-      # ---------------------------------------------------------
-      # 8. SIGN IPA
-      # ---------------------------------------------------------
-      - name: Sign IPA
-        run: |
-          source venv/bin/activate
-          python3 fearn_signer.py resign \
-            -i build/Fearn.ipa \
-            -c "Fearn Self-Signed" \
-            -o Fearn-signed.ipa \
-            -p certs/Fearn.mobileprovision \
-            --verbose
-
-      # ---------------------------------------------------------
-      # 9. VERIFY IPA CONTENTS
-      # ---------------------------------------------------------
-      - name: Verify IPA contents
-        run: unzip -l Fearn-signed.ipa | head -20
-
-      # ---------------------------------------------------------
-      # 10. RELEASE IPA
-      # ---------------------------------------------------------
-      - name: Create release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: Fearn-signed.ipa
-          tag_name: v1.7.0-${{ github.run_number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Updating build version using Xcode plutil..."
+          
+          # Sets CFBundleVersion (Build Number) to the unique GitHub Action run number
+          plutil -replace CFBundleVersion -string "${{ github.run_number }}" Fearn/Info.plist
+          
+          # (Optional) Updates CFBundleShortVersionString if you want a dynamic marketing version name
+          # plutil -replace CFBundleShortVersionString -string "1.0.${{ github.run_number }}" Fearn/Info.plist
+          
+          echo "New Plist Settings:"
+          plutil -p Fearn/Info.plist
