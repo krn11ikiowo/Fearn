@@ -27,22 +27,30 @@ jobs:
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
       # ---------------------------------------------------------
-      # 2. FORCE COPY NexStore SOURCE → Fearn
+      # 2. COPY NexStore → Fearn (REAL PATH)
       # ---------------------------------------------------------
       - name: Copy NexStore source into Fearn
         run: |
           mkdir -p Fearn
           rm -rf Fearn/*
-          cp -R nexstore/src/* Fearn/
+          if [ -d "nexstore/NexStore" ]; then
+            cp -R nexstore/NexStore/* Fearn/
+          else
+            echo "NexStore folder missing!"
+          fi
 
       # ---------------------------------------------------------
-      # 3. FORCE COPY NexStore TWEAKS → NexStoreTweaks
+      # 3. COPY Tweaks → NexStoreTweaks (REAL PATH)
       # ---------------------------------------------------------
       - name: Copy NexStore tweaks
         run: |
           mkdir -p NexStoreTweaks
           rm -rf NexStoreTweaks/*
-          cp -R nexstore/tweaks/* NexStoreTweaks/
+          if [ -d "nexstore/Tweaks" ]; then
+            cp -R nexstore/Tweaks/* NexStoreTweaks/
+          else
+            echo "Tweaks folder missing!"
+          fi
 
       # ---------------------------------------------------------
       # 4. FIRST PUSH — NexStore sync
