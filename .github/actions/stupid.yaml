@@ -1,0 +1,184 @@
+name: Install Debug Workflows (6 Commits)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install-debug:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create commit helper script
+        run: |
+          cat << 'EOF' > commit-helper.sh
+#!/bin/bash
+
+TARGET="$1"
+MESSAGE="$2"
+
+git config user.name "github-actions"
+git config user.email "github-actions@github.com"
+
+git add "$TARGET"
+git commit -m "$MESSAGE" || {
+  echo "force-$(date +%s)" > .force_debug
+  git add .force_debug
+  git commit -m "Forced commit: $MESSAGE"
+}
+
+for attempt in 1 2 3; do
+  git push && exit 0
+  sleep 2
+done
+
+exit 0
+EOF
+          chmod +x commit-helper.sh
+
+      #######################################################################
+      # COMMIT 1 — debug-env.yml
+      #######################################################################
+      - name: Create debug-env workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-env.yml
+name: Debug Environment
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Print environment variables
+        run: env
+EOF
+
+      - name: Commit debug-env workflow
+        run: ./commit-helper.sh ".github/workflows/debug-env.yml" "Add debug-env workflow"
+
+      #######################################################################
+      # COMMIT 2 — debug-git.yml
+      #######################################################################
+      - name: Create debug-git workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-git.yml
+name: Debug Git
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show git status
+        run: git status
+      - name: Show recent commits
+        run: git log --oneline -10
+EOF
+
+      - name: Commit debug-git workflow
+        run: ./commit-helper.sh ".github/workflows/debug-git.yml" "Add debug-git workflow"
+
+      #######################################################################
+      # COMMIT 3 — debug-folders.yml
+      #######################################################################
+      - name: Create debug-folders workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-folders.yml
+name: Debug Folder Structure
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: List repository tree
+        run: ls -R .
+EOF
+
+      - name: Commit debug-folders workflow
+        run: ./commit-helper.sh ".github/workflows/debug-folders.yml" "Add debug-folders workflow"
+
+      #######################################################################
+      # COMMIT 4 — debug-xcode.yml
+      #######################################################################
+      - name: Create debug-xcode workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-xcode.yml
+name: Debug Xcode
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Show available SDKs
+        run: xcodebuild -showsdks
+EOF
+
+      - name: Commit debug-xcode workflow
+        run: ./commit-helper.sh ".github/workflows/debug-xcode.yml" "Add debug-xcode workflow"
+
+      #######################################################################
+      # COMMIT 5 — debug-nexstore.yml
+      #######################################################################
+      - name: Create debug-nexstore workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-nexstore.yml
+name: Debug NexStore Sync
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Clone NexStore
+        run: git clone https://github.com/NovaDev404/NexStore-new.git nexstore
+      - name: List NexStore contents
+        run: ls -R nexstore
+EOF
+
+      - name: Commit debug-nexstore workflow
+        run: ./commit-helper.sh ".github/workflows/debug-nexstore.yml" "Add debug-nexstore workflow"
+
+      #######################################################################
+      # COMMIT 6 — debug-ipa.yml
+      #######################################################################
+      - name: Create debug-ipa workflow
+        run: |
+          cat << 'EOF' > .github/workflows/debug-ipa.yml
+name: Debug IPA Build
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check Xcode project existence
+        run: |
+          if [ -d "Fearn.xcodeproj" ]; then
+            echo "Xcode project exists:"
+            ls -R Fearn.xcodeproj
+          else
+            echo "Xcode project missing"
+          fi
+EOF
+
+      - name: Commit debug-ipa workflow
+        run: ./commit-helper.sh ".github/workflows/debug-ipa.yml" "Add debug-ipa workflow"
