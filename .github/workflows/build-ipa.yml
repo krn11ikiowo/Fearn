@@ -18,25 +18,22 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---------------------------------------------------------
       # 1. Clone NexStore-new
-      # ---------------------------------------------------------
       - name: Clone NexStore 2
         run: |
           rm -rf nexstore
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
-      # ---------------------------------------------------------
       # 2. Regenerate missing iOS core files (KEEP existing code)
-      # ---------------------------------------------------------
       - name: Regenerate missing iOS files
         run: |
           mkdir -p Fearn
           mkdir -p Fearn.xcodeproj
           mkdir -p certs
 
-          # Core Swift files
-          [ ! -f Fearn/AppDelegate.swift ] && cat > Fearn/AppDelegate.swift << 'EOF'
+          # AppDelegate.swift
+          if [ ! -f Fearn/AppDelegate.swift ]; then
+            cat > Fearn/AppDelegate.swift << 'EOF'
 import UIKit
 
 @main
@@ -47,16 +44,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool { return true }
 }
 EOF
+          fi
 
-          [ ! -f Fearn/SceneDelegate.swift ] && cat > Fearn/SceneDelegate.swift << 'EOF'
+          # SceneDelegate.swift
+          if [ ! -f Fearn/SceneDelegate.swift ]; then
+            cat > Fearn/SceneDelegate.swift << 'EOF'
 import UIKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 }
 EOF
+          fi
 
-          [ ! -f Fearn/ViewController.swift ] && cat > Fearn/ViewController.swift << 'EOF'
+          # ViewController.swift
+          if [ ! -f Fearn/ViewController.swift ]; then
+            cat > Fearn/ViewController.swift << 'EOF'
 import UIKit
 
 class ViewController: UIViewController {
@@ -66,18 +69,26 @@ class ViewController: UIViewController {
     }
 }
 EOF
+          fi
 
           # Info.plist
-          [ ! -f Fearn/Info.plist ] && cat > Fearn/Info.plist << 'EOF'
+          if [ ! -f Fearn/Info.plist ]; then
+            cat > Fearn/Info.plist << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict></dict>
 </plist>
 EOF
+          fi
 
           # ExportOptions.plist
-          [ ! -f ExportOptions.plist ] && cat > ExportOptions.plist << 'EOF'
+          if [ ! -f ExportOptions.plist ]; then
+            cat > ExportOptions.plist << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>method</key>
@@ -85,14 +96,18 @@ EOF
 </dict>
 </plist>
 EOF
+          fi
 
           # Signing script
-          [ ! -f fearn_signer.py ] && cat > fearn_signer.py << 'EOF'
+          if [ ! -f fearn_signer.py ]; then
+            cat > fearn_signer.py << 'EOF'
 print("Signer placeholder")
 EOF
+          fi
 
           # Minimal Xcode project
-          [ ! -f Fearn.xcodeproj/project.pbxproj ] && cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
+          if [ ! -f Fearn.xcodeproj/project.pbxproj ]; then
+            cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
 {
   archiveVersion = 1;
   objectVersion = 56;
@@ -100,10 +115,9 @@ EOF
   rootObject = Project;
 }
 EOF
+          fi
 
-      # ---------------------------------------------------------
       # 3. Copy NexStore → Fearn (KEEP existing files)
-      # ---------------------------------------------------------
       - name: Copy NexStore source into Fearn
         run: |
           mkdir -p Fearn
@@ -111,9 +125,7 @@ EOF
             cp -R nexstore/NexStore/*.swift Fearn/
           fi
 
-      # ---------------------------------------------------------
       # 4. Copy Tweaks → NexStoreTweaks
-      # ---------------------------------------------------------
       - name: Copy NexStore tweaks
         run: |
           mkdir -p NexStoreTweaks
@@ -121,9 +133,7 @@ EOF
             cp -R nexstore/Tweaks/*.swift NexStoreTweaks/
           fi
 
-      # ---------------------------------------------------------
       # 5. Copy Frameworks → Fearn/Frameworks
-      # ---------------------------------------------------------
       - name: Copy NexStore frameworks
         run: |
           mkdir -p Fearn/Frameworks
@@ -131,9 +141,7 @@ EOF
             cp -R nexstore/Frameworks/* Fearn/Frameworks/
           fi
 
-      # ---------------------------------------------------------
       # 6. First push — sync + regen
-      # ---------------------------------------------------------
       - name: Commit NexStore sync + regen
         run: |
           git config user.name "github-actions"
@@ -143,15 +151,11 @@ EOF
           git commit -m "Sync NexStore + regenerate missing iOS files" || echo "No changes"
           git push || echo "Nothing to push"
 
-      # ---------------------------------------------------------
       # 7. Select Xcode
-      # ---------------------------------------------------------
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      # ---------------------------------------------------------
-      # 8. Build IPA (NO invalid retry logic)
-      # ---------------------------------------------------------
+      # 8. Build IPA
       - name: Build iOS app
         run: |
           xcodebuild \
@@ -162,9 +166,7 @@ EOF
             -archivePath build/Fearn.xcarchive \
             archive
 
-      # ---------------------------------------------------------
       # 9. Export IPA
-      # ---------------------------------------------------------
       - name: Export IPA
         run: |
           xcodebuild \
@@ -173,29 +175,25 @@ EOF
             -exportPath build \
             -exportOptionsPlist ExportOptions.plist
 
-      # ---------------------------------------------------------
       # 10. Version bump — second push
-      # ---------------------------------------------------------
       - name: Version bump
         run: |
           if [ ! -f VERSION ]; then echo "1.0.0" > VERSION; fi
 
           old=$(cat VERSION)
-          major=$(echo $old | cut -d. -f1)
-          minor=$(echo $old | cut -d. -f2)
-          patch=$(echo $old | cut -d. -f3)
+          major=$(echo "$old" | cut -d. -f1)
+          minor=$(echo "$old" | cut -d. -f2)
+          patch=$(echo "$old" | cut -d. -f3)
           new_patch=$((patch + 1))
           new="$major.$minor.$new_patch"
 
-          echo $new > VERSION
+          echo "$new" > VERSION
 
           git add VERSION
           git commit -m "Version bump to $new" || echo "No changes"
           git push || echo "Nothing to push"
 
-      # ---------------------------------------------------------
       # 11. Sign IPA — third push
-      # ---------------------------------------------------------
       - name: Sign IPA
         run: |
           python3 fearn_signer.py
@@ -205,9 +203,7 @@ EOF
           git commit -m "Add signed IPA" || echo "No changes"
           git push || echo "Nothing to push"
 
-      # ---------------------------------------------------------
       # 12. Release IPA
-      # ---------------------------------------------------------
       - name: Release IPA
         uses: softprops/action-gh-release@v1
         with:
