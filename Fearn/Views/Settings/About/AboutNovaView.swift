@@ -1,0 +1,118 @@
+//
+//  AboutNyaView.swift
+//  Ksign
+//
+//  Created by Nagata Asami on 23/5/25.
+//
+
+import SwiftUI
+import NimbleViews
+import NimbleJSON
+
+// MARK: - View
+struct AboutNovaView: View {
+	private let _dataService = NBFetchService()
+	
+	@State private var shouldShowPatchNotes = false
+	
+	// MARK: Body
+	var body: some View {
+		NBList(.localized("About")) {
+            Section {
+                VStack {
+                    Image(uiImage: (UIImage(named: Bundle.main.iconFileName ?? ""))! )
+                        .appIconStyle(size: 72)
+                    
+                    Text(Bundle.main.exec)
+                        .font(.largeTitle)
+                        .bold()
+                        .foregroundStyle(.accent)
+                    
+                    HStack(spacing: 4) {
+                        Text("Version")
+                        Text(Bundle.main.version)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    
+                    Button {
+                        _showPatchNotes()
+                    } label: {
+                        Text("Show patch notes").bg()
+                    }
+                    .font(.footnote)
+                    .padding(.top, 4)
+                    .tint(.accent)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .listRowBackground(EmptyView())
+			
+			NBSection(.localized("Credits")) {
+				_credit(name: "NovaDev404", desc: "NexStore Developer", github: "NovaDev404")
+				_credit(name: "Claration", desc: "Feather Developer", github: "claration")
+				_credit(name: "Nyasami", desc: "Ksign Developer", github: "nyasami")
+			}
+			
+			NBSection("Special thanks") {
+				Group {
+					Text(.localized("This couldn't have been done without the original Feather and Ksign developers, and any other contributors!"))
+						.foregroundStyle(.secondary)
+						.padding(.vertical, 2)
+				}
+				.transition(.slide)
+			}
+            
+            NBSection("") {
+                Text(Bundle.main.bundleIdentifier ?? "")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+		}
+		.listStyle(.insetGrouped)
+		.padding(.bottom, 80) // Extra space for bottom bar
+		.onAppear {
+			// Show patch notes when navigating to this view if they haven't been shown before
+			if !UserDefaults.standard.bool(forKey: "patchNotesShown") {
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+					_showPatchNotes()
+					UserDefaults.standard.set(true, forKey: "patchNotesShown")
+				}
+			}
+		}
+	}
+	
+	private func _showPatchNotes() {
+		UIAlertController.showAlertWithOk(
+			title: .localized("From NovaDev404, Version \(Bundle.main.version)"),
+			message: .localized("NexStore v2.0!"),
+			isCancel: true,
+			thankYou: true
+		)
+	}
+}
+
+// MARK: - Extension: view
+extension AboutNovaView {
+	@ViewBuilder
+	private func _credit(
+		name: String?,
+		desc: String?,
+		github: String
+	) -> some View {
+		FRIconCellView(
+			title: name ?? github,
+			subtitle: desc ?? "",
+			iconUrl: URL(string: "https://github.com/\(github).png")!,
+			trailing: AnyView(
+				Image(systemName: "arrow.up.right")
+					.foregroundStyle(.secondary)
+			)
+		)
+		.onTapGesture {
+			if let url = URL(string: "https://github.com/\(github)") {
+				UIApplication.shared.open(url)
+			}
+		}
+	}
+}
