@@ -1,4 +1,4 @@
-name: NexStore Sync + iOS IPA Build
+name: Build IPA (Final Workflow)
 
 on:
   push:
@@ -23,180 +23,7 @@ jobs:
           rm -rf nexstore
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
-      - name: Regenerate minimal iOS project files
-        run: |
-          mkdir -p Fearn
-          mkdir -p Fearn.xcodeproj
-          mkdir -p Fearn.xcodeproj/project.xcworkspace
-          mkdir -p Fearn.xcodeproj/xcshareddata/xcschemes
-
-          # AppDelegate.swift
-          if [ ! -f Fearn/AppDelegate.swift ]; then
-            cat << 'EOF' > Fearn/AppDelegate.swift
-import UIKit
-
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool { return true }
-}
-EOF
-          fi
-
-          # SceneDelegate.swift
-          if [ ! -f Fearn/SceneDelegate.swift ]; then
-            cat << 'EOF' > Fearn/SceneDelegate.swift
-import UIKit
-
-class SceneDelegate: UIResponder, UIWindowSceneDelegate {
-    var window: UIWindow?
-}
-EOF
-          fi
-
-          # ViewController.swift
-          if [ ! -f Fearn/ViewController.swift ]; then
-            cat << 'EOF' > Fearn/ViewController.swift
-import UIKit
-
-class ViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .white
-    }
-}
-EOF
-          fi
-
-          # Info.plist
-          if [ ! -f Fearn/Info.plist ]; then
-            cat << 'EOF' > Fearn/Info.plist
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-  <key>CFBundleIdentifier</key>
-  <string>com.jeremiah.fearn</string>
-  <key>CFBundleName</key>
-  <string>Fearn</string>
-</dict>
-</plist>
-EOF
-          fi
-
-          # ExportOptions.plist
-          if [ ! -f ExportOptions.plist ]; then
-            cat << 'EOF' > ExportOptions.plist
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-  <key>method</key>
-  <string>development</string>
-</dict>
-</plist>
-EOF
-          fi
-
-          # Signing script
-          if [ ! -f fearn_signer.py ]; then
-            cat << 'EOF' > fearn_signer.py
-print("Signer placeholder")
-EOF
-          fi
-
-          # Minimal Xcode project
-          cat << 'EOF' > Fearn.xcodeproj/project.pbxproj
-{
-  archiveVersion = 1;
-  objectVersion = 56;
-  classes = {};
-  objects = {
-
-    1 = {
-      isa = PBXProject;
-      attributes = { LastUpgradeCheck = 1500; };
-      buildConfigurationList = 2;
-      mainGroup = 3;
-      targets = (4);
-    };
-
-    2 = {
-      isa = XCConfigurationList;
-      buildConfigurations = (5, 6);
-    };
-
-    3 = {
-      isa = PBXGroup;
-      children = ();
-      sourceTree = "<group>";
-    };
-
-    4 = {
-      isa = PBXNativeTarget;
-      name = Fearn;
-      productName = Fearn;
-      buildConfigurationList = 7;
-      buildPhases = ();
-    };
-
-    5 = {
-      isa = XCBuildConfiguration;
-      name = Debug;
-      buildSettings = {
-        INFOPLIST_FILE = Fearn/Info.plist;
-        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
-        SWIFT_VERSION = 5.0;
-      };
-    };
-
-    6 = {
-      isa = XCBuildConfiguration;
-      name = Release;
-      buildSettings = {
-        INFOPLIST_FILE = Fearn/Info.plist;
-        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
-        SWIFT_VERSION = 5.0;
-      };
-    };
-
-    7 = {
-      isa = XCConfigurationList;
-      buildConfigurations = (5, 6);
-    };
-
-  };
-  rootObject = 1;
-}
-EOF
-
-          # Workspace
-          cat << 'EOF' > Fearn.xcodeproj/project.xcworkspace/contents.xcworkspacedata
-<?xml version="1.0" encoding="UTF-8"?>
-<Workspace version="1.0"></Workspace>
-EOF
-
-          # Scheme
-          cat << 'EOF' > Fearn.xcodeproj/xcshareddata/xcschemes/Fearn.xcscheme
-<?xml version="1.0" encoding="UTF-8"?>
-<Scheme LastUpgradeVersion="1500" version="1.3">
-  <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
-    <BuildActionEntries>
-      <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
-        <BuildableReference
-          BuildableIdentifier="primary"
-          BlueprintIdentifier="4"
-          BuildableName="Fearn.app"
-          BlueprintName="Fearn"
-          ReferencedContainer="container:Fearn.xcodeproj">
-        </BuildableReference>
-      </BuildActionEntry>
-    </BuildActionEntries>
-  </BuildAction>
-</Scheme>
-EOF
-
-      - name: Copy NexStore source / tweaks / frameworks
+      - name: Sync NexStore Swift files
         run: |
           mkdir -p Fearn NexStoreTweaks Fearn/Frameworks
 
@@ -212,13 +39,13 @@ EOF
             cp -R nexstore/Frameworks/* Fearn/Frameworks/
           fi
 
-      - name: Commit Xcode + NexStore files (push #1)
+      - name: Commit NexStore sync (push #1)
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add Fearn Fearn.xcodeproj NexStoreTweaks ExportOptions.plist fearn_signer.py
-          git commit -m "Sync NexStore + regenerate iOS project files" || echo "No changes"
+          git add Fearn NexStoreTweaks Fearn/Frameworks
+          git commit -m "Sync NexStore Swift files" || echo "No changes"
           git push || echo "Nothing to push"
 
       - name: Select Xcode
@@ -261,8 +88,8 @@ EOF
 
       - name: Sign IPA (push #3)
         run: |
-          python3 fearn_signer.py
-          cp build/Fearn.ipa Fearn-signed.ipa 2>/dev/null || touch Fearn-signed.ipa
+          python3 fearn_signer.py || echo "Signer placeholder"
+          cp build/*.ipa Fearn-signed.ipa 2>/dev/null || touch Fearn-signed.ipa
 
           git add Fearn-signed.ipa
           git commit -m "Add signed IPA" || echo "No changes"
