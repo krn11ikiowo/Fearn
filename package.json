@@ -1,0 +1,17 @@
+{
+  "name": "fearn-agent",
+  "version": "1.0.0",
+  "description": "Autonomous multi-project AI agent for Fearn",
+  "main": "agent/agent.js",
+  "scripts": {
+    "agent": "node agent/agent.js",
+    "start": "node agent/agent.js"
+  },
+  "author": "krn11ikiowo",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "fs-extra": "^11.2.0",
+    "simple-git": "^3.22.0"
+  }
+}
