@@ -34,6 +34,9 @@ jobs:
       # ---------------------------------------------------------
       # 2. INSTALL DEPENDENCIES FOR AI AGENT
       # ---------------------------------------------------------
+      - name: Remove corrupted lockfile
+        run: rm -f package-lock.json
+        
       - name: Install AI agent dependencies
         run: |
           npm install
