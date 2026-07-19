@@ -1,4 +1,4 @@
-name: NexStore Sync + Multi-Push Build
+name: NexStore Sync + Self-Healing iOS Build
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ---------------------------------------------------------
-      # 1. CLONE NexStore 2
+      # 1. Clone NexStore-new
       # ---------------------------------------------------------
       - name: Clone NexStore 2
         run: |
@@ -27,51 +27,355 @@ jobs:
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
       # ---------------------------------------------------------
-      # 2. COPY NexStore → Fearn (REAL PATH)
+      # 2. Regenerate missing iOS core files (KEEP existing code)
+      # ---------------------------------------------------------
+      - name: Regenerate missing iOS files
+        run: |
+          mkdir -p Fearn
+          mkdir -p Fearn.xcodeproj
+          mkdir -p certs
+
+          # AppDelegate.swift
+          if [ ! -f Fearn/AppDelegate.swift ]; then
+            cat > Fearn/AppDelegate.swift << 'EOF'
+import UIKit
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool { return true }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+}
+EOF
+          fi
+
+          # SceneDelegate.swift
+          if [ ! -f Fearn/SceneDelegate.swift ]; then
+            cat > Fearn/SceneDelegate.swift << 'EOF'
+import UIKit
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = ViewController()
+        window.makeKeyAndVisible()
+        self.window = window
+    }
+}
+EOF
+          fi
+
+          # ViewController.swift
+          if [ ! -f Fearn/ViewController.swift ]; then
+            cat > Fearn/ViewController.swift << 'EOF'
+import UIKit
+
+class ViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+    }
+}
+EOF
+          fi
+
+          # Info.plist
+          if [ ! -f Fearn/Info.plist ]; then
+            cat > Fearn/Info.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+</dict>
+</plist>
+EOF
+          fi
+
+          # ExportOptions.plist
+          if [ ! -f ExportOptions.plist ]; then
+            cat > ExportOptions.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>development</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>compileBitcode</key>
+    <false/>
+</dict>
+</plist>
+EOF
+          fi
+
+          # Signing script
+          if [ ! -f fearn_signer.py ]; then
+            cat > fearn_signer.py << 'EOF'
+import zipfile
+import shutil
+import os
+import subprocess
+import argparse
+
+def resign(ipa_path, cert_name, output_path, mobileprovision):
+    temp = "temp_payload"
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    os.makedirs(temp)
+
+    with zipfile.ZipFile(ipa_path, 'r') as z:
+        z.extractall(temp)
+
+    app_path = None
+    for root, dirs, files in os.walk(temp):
+        for d in dirs:
+            if d.endswith(".app"):
+                app_path = os.path.join(root, d)
+
+    shutil.copy(mobileprovision, os.path.join(app_path, "embedded.mobileprovision"))
+
+    subprocess.run([
+        "codesign",
+        "--force",
+        "--sign", cert_name,
+        "--timestamp=none",
+        app_path
+    ])
+
+    shutil.make_archive("temp_signed", "zip", temp)
+    shutil.move("temp_signed.zip", output_path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("resign")
+    parser.add_argument("-i")
+    parser.add_argument("-c")
+    parser.add_argument("-o")
+    parser.add_argument("-p")
+    args = parser.parse_args()
+
+    resign(args.i, args.c, args.o, args.p)
+EOF
+          fi
+
+          # Minimal Xcode project
+          if [ ! -f Fearn.xcodeproj/project.pbxproj ]; then
+            cat > Fearn.xcodeproj/project.pbxproj << 'EOF'
+{
+  archiveVersion = 1;
+  objectVersion = 56;
+  classes = {};
+  objects = {
+
+    Project = {
+      isa = PBXProject;
+      attributes = { LastUpgradeCheck = 1500; };
+      buildConfigurationList = BuildConfigList;
+      mainGroup = MainGroup;
+      targets = (AppTarget);
+    };
+
+    MainGroup = {
+      isa = PBXGroup;
+      children = (AppGroup, ProductsGroup);
+      sourceTree = "<group>";
+    };
+
+    AppGroup = {
+      isa = PBXGroup;
+      name = Fearn;
+      path = Fearn;
+      sourceTree = "<group>";
+      children = (AppDelegateFile, SceneDelegateFile, ViewControllerFile, InfoPlistFile);
+    };
+
+    ProductsGroup = {
+      isa = PBXGroup;
+      name = Products;
+      children = (AppProduct);
+      sourceTree = "<group>";
+    };
+
+    AppProduct = {
+      isa = PBXFileReference;
+      explicitFileType = wrapper.application;
+      path = Fearn.app;
+      sourceTree = BUILT_PRODUCTS_DIR;
+    };
+
+    AppDelegateFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = AppDelegate.swift;
+      sourceTree = "<group>";
+    };
+
+    SceneDelegateFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = SceneDelegate.swift;
+      sourceTree = "<group>";
+    };
+
+    ViewControllerFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = sourcecode.swift;
+      path = ViewController.swift;
+      sourceTree = "<group>";
+    };
+
+    InfoPlistFile = {
+      isa = PBXFileReference;
+      lastKnownFileType = text.plist.xml;
+      path = Info.plist;
+      sourceTree = "<group>";
+    };
+
+    AppTarget = {
+      isa = PBXNativeTarget;
+      name = Fearn;
+      productName = Fearn;
+      productReference = AppProduct;
+      buildConfigurationList = TargetBuildConfigList;
+      buildPhases = (SourcesPhase, FrameworksPhase, ResourcesPhase);
+    };
+
+    SourcesPhase = {
+      isa = PBXSourcesBuildPhase;
+      files = (AppDelegateBuild, SceneDelegateBuild, ViewControllerBuild);
+    };
+
+    AppDelegateBuild = { isa = PBXBuildFile; fileRef = AppDelegateFile; };
+    SceneDelegateBuild = { isa = PBXBuildFile; fileRef = SceneDelegateFile; };
+    ViewControllerBuild = { isa = PBXBuildFile; fileRef = ViewControllerFile; };
+
+    FrameworksPhase = { isa = PBXFrameworksBuildPhase; files = (); };
+    ResourcesPhase = { isa = PBXResourcesBuildPhase; files = (); };
+
+    BuildConfigList = {
+      isa = XCConfigurationList;
+      buildConfigurations = (DebugConfig, ReleaseConfig);
+    };
+
+    TargetBuildConfigList = {
+      isa = XCConfigurationList;
+      buildConfigurations = (DebugConfig, ReleaseConfig);
+    };
+
+    DebugConfig = {
+      isa = XCBuildConfiguration;
+      name = Debug;
+      buildSettings = {
+        INFOPLIST_FILE = Fearn/Info.plist;
+        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
+        PRODUCT_NAME = Fearn;
+        SWIFT_VERSION = 5.0;
+      };
+    };
+
+    ReleaseConfig = {
+      isa = XCBuildConfiguration;
+      name = Release;
+      buildSettings = {
+        INFOPLIST_FILE = Fearn/Info.plist;
+        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
+        PRODUCT_NAME = Fearn;
+        SWIFT_VERSION = 5.0;
+      };
+    };
+
+  };
+  rootObject = Project;
+}
+EOF
+          fi
+
+      # ---------------------------------------------------------
+      # 3. Copy NexStore → Fearn (KEEP existing files)
       # ---------------------------------------------------------
       - name: Copy NexStore source into Fearn
         run: |
           mkdir -p Fearn
-          rm -rf Fearn/*
           if [ -d "nexstore/NexStore" ]; then
             cp -R nexstore/NexStore/* Fearn/
-          else
-            echo "NexStore folder missing!"
           fi
 
       # ---------------------------------------------------------
-      # 3. COPY Tweaks → NexStoreTweaks (REAL PATH)
+      # 4. Copy Tweaks → NexStoreTweaks
       # ---------------------------------------------------------
       - name: Copy NexStore tweaks
         run: |
           mkdir -p NexStoreTweaks
-          rm -rf NexStoreTweaks/*
           if [ -d "nexstore/Tweaks" ]; then
             cp -R nexstore/Tweaks/* NexStoreTweaks/
-          else
-            echo "Tweaks folder missing!"
           fi
 
       # ---------------------------------------------------------
-      # 4. FIRST PUSH — NexStore sync
+      # 5. Copy Frameworks → Fearn/Frameworks
       # ---------------------------------------------------------
-      - name: Commit NexStore sync
+      - name: Copy NexStore frameworks
+        run: |
+          mkdir -p Fearn/Frameworks
+          if [ -d "nexstore/Frameworks" ]; then
+            cp -R nexstore/Frameworks/* Fearn/Frameworks/
+          fi
+
+      # ---------------------------------------------------------
+      # 6. First push — sync + regen
+      # ---------------------------------------------------------
+      - name: Commit NexStore sync + regen
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add Fearn NexStoreTweaks
-          git commit -m "Sync NexStore source + tweaks (forced overwrite)" || echo "No changes"
+          git add Fearn Fearn.xcodeproj NexStoreTweaks ExportOptions.plist fearn_signer.py
+          git commit -m "Sync NexStore + regenerate missing iOS files" || echo "No changes"
           git push || echo "Nothing to push"
 
       # ---------------------------------------------------------
-      # 5. SELECT XCODE
+      # 7. Select Xcode
       # ---------------------------------------------------------
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
       # ---------------------------------------------------------
-      # 6. BUILD IPA
+      # 8. Build IPA
       # ---------------------------------------------------------
       - name: Build iOS app
         run: |
@@ -84,7 +388,7 @@ jobs:
             archive
 
       # ---------------------------------------------------------
-      # 7. EXPORT IPA
+      # 9. Export IPA
       # ---------------------------------------------------------
       - name: Export IPA
         run: |
@@ -95,7 +399,7 @@ jobs:
             -exportOptionsPlist ExportOptions.plist
 
       # ---------------------------------------------------------
-      # 8. VERSION BUMP — SECOND PUSH
+      # 10. Version bump — second push
       # ---------------------------------------------------------
       - name: Version bump
         run: |
@@ -118,7 +422,7 @@ jobs:
           git push || echo "Nothing to push"
 
       # ---------------------------------------------------------
-      # 9. SIGN IPA — THIRD PUSH
+      # 11. Sign IPA — third push
       # ---------------------------------------------------------
       - name: Sign IPA
         run: |
@@ -134,7 +438,7 @@ jobs:
           git push || echo "Nothing to push"
 
       # ---------------------------------------------------------
-      # 10. RELEASE IPA
+      # 12. Release IPA
       # ---------------------------------------------------------
       - name: Release IPA
         uses: softprops/action-gh-release@v1
