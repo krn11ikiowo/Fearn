@@ -1,0 +1,168 @@
+name: Add 4 Workflows (4 Commits)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  add-workflows:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create workflow folder
+        run: mkdir -p .github/workflows
+
+      # -------------------------------
+      # Commit 1 — init-folders.yml
+      # -------------------------------
+      - name: Add init-folders workflow
+        run: |
+          cat << 'EOF' > .github/workflows/init-folders.yml
+name: Initialize Fearn Folder Structure
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  init:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create folders
+        run: |
+          mkdir -p Fearn Fearn.xcodeproj NexStoreTweaks Fearn/Frameworks XcodeTemplate SwiftTemplate
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Fearn Fearn.xcodeproj NexStoreTweaks XcodeTemplate SwiftTemplate
+          git commit -m "Init folder structure" || echo "No changes"
+          git push || echo "Nothing to push"
+EOF
+
+      - name: Commit workflow 1
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .github/workflows/init-folders.yml
+          git commit -m "Add init-folders workflow" || echo "No changes"
+          git push || echo "Nothing to push"
+
+      # -------------------------------
+      # Commit 2 — commit-swift.yml
+      # -------------------------------
+      - name: Add commit-swift workflow
+        run: |
+          cat << 'EOF' > .github/workflows/commit-swift.yml
+name: Commit Swift Files
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  commit-swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy Swift files
+        run: |
+          mkdir -p Fearn
+          cp -R SwiftTemplate/*.swift Fearn/ 2>/dev/null || echo "No Swift files"
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Fearn
+          git commit -m "Add Swift files" || echo "No changes"
+          git push || echo "Nothing to push"
+EOF
+
+      - name: Commit workflow 2
+        run: |
+          git add .github/workflows/commit-swift.yml
+          git commit -m "Add commit-swift workflow" || echo "No changes"
+          git push || echo "Nothing to push"
+
+      # -------------------------------
+      # Commit 3 — commit-xcode.yml
+      # -------------------------------
+      - name: Add commit-xcode workflow
+        run: |
+          cat << 'EOF' > .github/workflows/commit-xcode.yml
+name: Commit Xcode Files
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  commit-xcode:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy Xcode files
+        run: |
+          mkdir -p Fearn.xcodeproj/project.xcworkspace
+          mkdir -p Fearn.xcodeproj/xcshareddata/xcschemes
+          cp XcodeTemplate/* Fearn.xcodeproj/ 2>/dev/null || echo "No Xcode files"
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Fearn.xcodeproj
+          git commit -m "Add Xcode project files" || echo "No changes"
+          git push || echo "Nothing to push"
+EOF
+
+      - name: Commit workflow 3
+        run: |
+          git add .github/workflows/commit-xcode.yml
+          git commit -m "Add commit-xcode workflow" || echo "No changes"
+          git push || echo "Nothing to push"
+
+      # -------------------------------
+      # Commit 4 — build-ipa.yml
+      # -------------------------------
+      - name: Add build-ipa workflow
+        run: |
+          cat << 'EOF' > .github/workflows/build-ipa.yml
+name: Build IPA
+on:
+  workflow_dispatch
+  push:
+    branches: [ main ]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Build
+        run: |
+          xcodebuild \
+            -project Fearn.xcodeproj \
+            -scheme Fearn \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/Fearn.xcarchive \
+            archive
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Fearn.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ExportOptions.plist
+EOF
+
+      - name: Commit workflow 4
+        run: |
+          git add .github/workflows/build-ipa.yml
+          git commit -m "Add build-ipa workflow" || echo "No changes"
+          git push || echo "Nothing to push"
