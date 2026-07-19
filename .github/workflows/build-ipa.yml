@@ -1,4 +1,4 @@
-name: Sync NexStore 2 → Fearn + Build + Sign IPA
+name: NexStore Sync + Multi-Push Build
 
 on:
   push:
@@ -19,46 +19,41 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ---------------------------------------------------------
-      # 1. CLONE NexStore 2 SOURCE
+      # 1. CLONE NexStore 2
       # ---------------------------------------------------------
       - name: Clone NexStore 2
         run: |
-          echo "Cloning NexStore-new..."
           rm -rf nexstore
           git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
       # ---------------------------------------------------------
-      # 2. COPY NexStore SOURCE → Fearn
+      # 2. FORCE COPY NexStore SOURCE → Fearn
       # ---------------------------------------------------------
       - name: Copy NexStore source into Fearn
         run: |
-          echo "Copying NexStore src → Fearn..."
           mkdir -p Fearn
-          if [ -d "nexstore/src" ]; then
-            cp -R nexstore/src/* Fearn/
-          fi
+          rm -rf Fearn/*
+          cp -R nexstore/src/* Fearn/
 
       # ---------------------------------------------------------
-      # 3. COPY NexStore TWEAKS → NexStoreTweaks
+      # 3. FORCE COPY NexStore TWEAKS → NexStoreTweaks
       # ---------------------------------------------------------
       - name: Copy NexStore tweaks
         run: |
-          echo "Copying NexStore tweaks → NexStoreTweaks..."
           mkdir -p NexStoreTweaks
-          if [ -d "nexstore/tweaks" ]; then
-            cp -R nexstore/tweaks/* NexStoreTweaks/
-          fi
+          rm -rf NexStoreTweaks/*
+          cp -R nexstore/tweaks/* NexStoreTweaks/
 
       # ---------------------------------------------------------
-      # 4. COMMIT + PUSH CHANGES
+      # 4. FIRST PUSH — NexStore sync
       # ---------------------------------------------------------
-      - name: Commit synced NexStore source + tweaks
+      - name: Commit NexStore sync
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git add Fearn NexStoreTweaks
-          git commit -m "Sync NexStore 2 source + tweaks" || echo "No changes to commit"
+          git commit -m "Sync NexStore source + tweaks (forced overwrite)" || echo "No changes"
           git push || echo "Nothing to push"
 
       # ---------------------------------------------------------
@@ -92,7 +87,30 @@ jobs:
             -exportOptionsPlist ExportOptions.plist
 
       # ---------------------------------------------------------
-      # 8. SIGN IPA
+      # 8. VERSION BUMP — SECOND PUSH
+      # ---------------------------------------------------------
+      - name: Version bump
+        run: |
+          if [ ! -f VERSION ]; then echo "1.0.0" > VERSION; fi
+
+          old=$(cat VERSION)
+          major=$(echo $old | cut -d. -f1)
+          minor=$(echo $old | cut -d. -f2)
+          patch=$(echo $old | cut -d. -f3)
+          new_patch=$((patch + 1))
+          new="$major.$minor.$new_patch"
+
+          echo $new > VERSION
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $new" Fearn/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $new" Fearn/Info.plist
+
+          git add VERSION Fearn/Info.plist
+          git commit -m "Version bump to $new" || echo "No changes"
+          git push || echo "Nothing to push"
+
+      # ---------------------------------------------------------
+      # 9. SIGN IPA — THIRD PUSH
       # ---------------------------------------------------------
       - name: Sign IPA
         run: |
@@ -103,8 +121,12 @@ jobs:
             -p certs/Fearn.mobileprovision \
             --verbose
 
+          git add Fearn-signed.ipa
+          git commit -m "Add signed IPA" || echo "No changes"
+          git push || echo "Nothing to push"
+
       # ---------------------------------------------------------
-      # 9. RELEASE IPA
+      # 10. RELEASE IPA
       # ---------------------------------------------------------
       - name: Release IPA
         uses: softprops/action-gh-release@v1
