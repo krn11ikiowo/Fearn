@@ -1,0 +1,169 @@
+name: Initialize Xcode Project
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  init:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create minimal Xcode project
+        run: |
+          mkdir -p Fearn
+          mkdir -p Fearn.xcodeproj
+          mkdir -p Fearn.xcodeproj/project.xcworkspace
+          mkdir -p Fearn.xcodeproj/xcshareddata/xcschemes
+
+          # Swift files
+          cat << 'EOF' > Fearn/AppDelegate.swift
+import UIKit
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool { return true }
+}
+EOF
+
+          cat << 'EOF' > Fearn/SceneDelegate.swift
+import UIKit
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+}
+EOF
+
+          cat << 'EOF' > Fearn/ViewController.swift
+import UIKit
+
+class ViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+    }
+}
+EOF
+
+          # Info.plist
+          cat << 'EOF' > Fearn/Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.jeremiah.fearn</string>
+  <key>CFBundleName</key>
+  <string>Fearn</string>
+</dict>
+</plist>
+EOF
+
+          # project.pbxproj
+          cat << 'EOF' > Fearn.xcodeproj/project.pbxproj
+{
+  archiveVersion = 1;
+  objectVersion = 56;
+  classes = {};
+  objects = {
+
+    1 = {
+      isa = PBXProject;
+      attributes = { LastUpgradeCheck = 1500; };
+      buildConfigurationList = 2;
+      mainGroup = 3;
+      targets = (4);
+    };
+
+    2 = {
+      isa = XCConfigurationList;
+      buildConfigurations = (5, 6);
+    };
+
+    3 = {
+      isa = PBXGroup;
+      children = ();
+      sourceTree = "<group>";
+    };
+
+    4 = {
+      isa = PBXNativeTarget;
+      name = Fearn;
+      productName = Fearn;
+      buildConfigurationList = 7;
+      buildPhases = ();
+    };
+
+    5 = {
+      isa = XCBuildConfiguration;
+      name = Debug;
+      buildSettings = {
+        INFOPLIST_FILE = Fearn/Info.plist;
+        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
+        SWIFT_VERSION = 5.0;
+      };
+    };
+
+    6 = {
+      isa = XCBuildConfiguration;
+      name = Release;
+      buildSettings = {
+        INFOPLIST_FILE = Fearn/Info.plist;
+        PRODUCT_BUNDLE_IDENTIFIER = com.jeremiah.fearn;
+        SWIFT_VERSION = 5.0;
+      };
+    };
+
+    7 = {
+      isa = XCConfigurationList;
+      buildConfigurations = (5, 6);
+    };
+
+  };
+  rootObject = 1;
+}
+EOF
+
+          # Workspace
+          cat << 'EOF' > Fearn.xcodeproj/project.xcworkspace/contents.xcworkspacedata
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version="1.0"></Workspace>
+EOF
+
+          # Scheme
+          cat << 'EOF' > Fearn.xcodeproj/xcshareddata/xcschemes/Fearn.xcscheme
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1500" version="1.3">
+  <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
+    <BuildActionEntries>
+      <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
+        <BuildableReference
+          BuildableIdentifier="primary"
+          BlueprintIdentifier="4"
+          BuildableName="Fearn.app"
+          BlueprintName="Fearn"
+          ReferencedContainer="container:Fearn.xcodeproj">
+        </BuildableReference>
+      </BuildActionEntry>
+    </BuildActionEntries>
+  </BuildAction>
+</Scheme>
+EOF
+
+      - name: Commit Xcode project
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add Fearn Fearn.xcodeproj
+          git commit -m "Initialize minimal Xcode project" || echo "No changes"
+          git push || echo "Nothing to push"
