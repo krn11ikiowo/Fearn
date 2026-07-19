@@ -1,0 +1,37 @@
+name: Initialize Fearn Folder Structure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  init-folders:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create required folders
+        run: |
+          mkdir -p Fearn
+          mkdir -p Fearn.xcodeproj
+          mkdir -p Fearn.xcodeproj/project.xcworkspace
+          mkdir -p Fearn.xcodeproj/xcshareddata/xcschemes
+          mkdir -p NexStoreTweaks
+          mkdir -p Fearn/Frameworks
+          mkdir -p XcodeTemplate
+          mkdir -p SwiftTemplate
+
+      - name: Commit folder structure
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add Fearn Fearn.xcodeproj NexStoreTweaks XcodeTemplate SwiftTemplate
+          git commit -m "Initialize required folder structure for Xcode workflows" || echo "No changes"
+          git push || echo "Nothing to push"
