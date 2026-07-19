@@ -51,7 +51,6 @@ for (const file of readmes) {
     sh(`git apply agent.patch`);
   } catch (err) {
     console.log("Patch failed, creating issue...");
-    const body = Buffer.from(err.toString()).toString("base64");
 
     sh(`curl -X POST \
       -H "Authorization: token ${process.env.GITHUB_TOKEN}" \
