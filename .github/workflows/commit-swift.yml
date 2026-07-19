@@ -1,0 +1,23 @@
+name: Commit Swift Files
+on: workflow_dispatch
+permissions:
+  contents: write
+
+jobs:
+  commit-swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add Swift files
+        run: |
+          mkdir -p Fearn
+          cp -R SwiftTemplate/*.swift Fearn/
+
+      - name: Commit Swift
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Fearn
+          git commit -m "Add Swift source files" || echo "No changes"
+          git push || echo "Nothing to push"
