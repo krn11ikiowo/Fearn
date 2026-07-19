@@ -1,4 +1,4 @@
-name: Build & Sign IPA
+name: Sync NexStore 2 → Fearn + Build + Sign IPA
 
 on:
   push:
@@ -7,136 +7,68 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
-  issues: write
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      # ---------------------------------------------------------
-      # 0. AI README INTERPRETER + AUTO BRANCH CREATOR + PR CREATOR
-      # ---------------------------------------------------------
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: AI README Agent
+      # ---------------------------------------------------------
+      # 1. CLONE NexStore 2 SOURCE
+      # ---------------------------------------------------------
+      - name: Clone NexStore 2
         run: |
-          echo "Scanning README files..."
-
-          readmes=$(find . -maxdepth 4 -type f -iname "README.md")
-          rm -f ai_changes.patch ai_summary.log extracted.txt codeblock.txt
-
-          for file in $readmes; do
-            echo "Processing $file"
-
-            # Extract actionable lines
-            grep -E "^(Feature:|TODO:|FIXME:|Planned:|Version:|Release:|Website:|App:|Branch:|Source:|\\- \\[x\\]|\\- \\[ \\])" "$file" > extracted.txt || true
-
-            # Extract code blocks
-            awk '/```/{flag=!flag;next}flag' "$file" > codeblock.txt || true
-
-            # AI reasoning layer
-            echo "Interpreting README with AI..."
-            node << 'EOF' > ai_output.json
-              const fs = require('fs');
-
-              const extracted = fs.existsSync('extracted.txt')
-                ? fs.readFileSync('extracted.txt', 'utf8')
-                : '';
-
-              const code = fs.existsSync('codeblock.txt')
-                ? fs.readFileSync('codeblock.txt', 'utf8')
-                : '';
-
-              const summary = `
-              README Analysis:
-              ----------------
-              Instructions:
-              ${extracted}
-
-              Code to apply:
-              ${code}
-              `;
-
-              fs.writeFileSync('ai_summary.log', summary);
-
-              // AI logic placeholder: generate patch file
-              fs.writeFileSync('ai_changes.patch', code);
-            EOF
-
-            # Detect branch type
-            branch="ai-update-$(date +%s)"
-
-            if grep -q "Website:" extracted.txt; then
-              branch="website-$(date +%s)"
-            elif grep -q "App:" extracted.txt; then
-              branch="app-$(date +%s)"
-            elif grep -q "Source:" extracted.txt; then
-              branch="source-$(date +%s)"
-            elif grep -q "Planned:" extracted.txt; then
-              branch="experimental-$(date +%s)"
-            fi
-
-            # Attempt patch
-            if [ -s ai_changes.patch ]; then
-              echo "Applying AI-generated patch..."
-              git apply ai_changes.patch 2> patch_error.log || true
-
-              if [ -s patch_error.log ]; then
-                echo "Patch failed — creating issue"
-
-                curl -X POST \
-                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                  -H "Accept: application/vnd.github+json" \
-                  https://api.github.com/repos/${{ github.repository }}/issues \
-                  -d "{\"title\": \"AI Patch Failed for $file\", \"body\": \"$(cat patch_error.log)\"}"
-              else
-                echo "Patch applied successfully"
-                changes=true
-              fi
-            fi
-
-            # Only create branch if source files exist
-            if ls *.js *.ts *.swift *.m *.mm *.py *.html *.css *.json 1> /dev/null 2>&1; then
-              echo "Creating branch: $branch"
-              git checkout -b "$branch"
-              git add .
-              git commit -m "AI README Agent: Auto-applied updates"
-              git push origin "$branch"
-
-              echo "Creating pull request..."
-              curl -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github+json" \
-                https://api.github.com/repos/${{ github.repository }}/pulls \
-                -d "{\"title\": \"AI README Agent Update\", \"head\": \"$branch\", \"base\": \"main\"}"
-            else
-              echo "No source files found — skipping branch creation."
-            fi
-          done
+          echo "Cloning NexStore-new..."
+          rm -rf nexstore
+          git clone https://github.com/NovaDev404/NexStore-new.git nexstore
 
       # ---------------------------------------------------------
-      # 1. XCODE SETUP
+      # 2. COPY NexStore SOURCE → Fearn
+      # ---------------------------------------------------------
+      - name: Copy NexStore source into Fearn
+        run: |
+          echo "Copying NexStore src → Fearn..."
+          mkdir -p Fearn
+          if [ -d "nexstore/src" ]; then
+            cp -R nexstore/src/* Fearn/
+          fi
+
+      # ---------------------------------------------------------
+      # 3. COPY NexStore TWEAKS → NexStoreTweaks
+      # ---------------------------------------------------------
+      - name: Copy NexStore tweaks
+        run: |
+          echo "Copying NexStore tweaks → NexStoreTweaks..."
+          mkdir -p NexStoreTweaks
+          if [ -d "nexstore/tweaks" ]; then
+            cp -R nexstore/tweaks/* NexStoreTweaks/
+          fi
+
+      # ---------------------------------------------------------
+      # 4. COMMIT + PUSH CHANGES
+      # ---------------------------------------------------------
+      - name: Commit synced NexStore source + tweaks
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add Fearn NexStoreTweaks
+          git commit -m "Sync NexStore 2 source + tweaks" || echo "No changes to commit"
+          git push || echo "Nothing to push"
+
+      # ---------------------------------------------------------
+      # 5. SELECT XCODE
       # ---------------------------------------------------------
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
       # ---------------------------------------------------------
-      # 2. FIXED DEPENDENCY INSTALL
-      # ---------------------------------------------------------
-      - name: Install dependencies
-        run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install cryptography pyopenssl biplist
-
-      # ---------------------------------------------------------
-      # 3. BUILD iOS APP
+      # 6. BUILD IPA
       # ---------------------------------------------------------
       - name: Build iOS app
         run: |
@@ -149,7 +81,7 @@ jobs:
             archive
 
       # ---------------------------------------------------------
-      # 4. EXPORT IPA
+      # 7. EXPORT IPA
       # ---------------------------------------------------------
       - name: Export IPA
         run: |
@@ -160,11 +92,10 @@ jobs:
             -exportOptionsPlist ExportOptions.plist
 
       # ---------------------------------------------------------
-      # 5. SIGN IPA
+      # 8. SIGN IPA
       # ---------------------------------------------------------
       - name: Sign IPA
         run: |
-          source venv/bin/activate
           python3 fearn_signer.py resign \
             -i build/Fearn.ipa \
             -c "Fearn Self-Signed" \
@@ -173,18 +104,12 @@ jobs:
             --verbose
 
       # ---------------------------------------------------------
-      # 6. VERIFY IPA CONTENTS
+      # 9. RELEASE IPA
       # ---------------------------------------------------------
-      - name: Verify IPA contents
-        run: unzip -l Fearn-signed.ipa | head -20
-
-      # ---------------------------------------------------------
-      # 7. RELEASE
-      # ---------------------------------------------------------
-      - name: Create release
+      - name: Release IPA
         uses: softprops/action-gh-release@v1
         with:
           files: Fearn-signed.ipa
-          tag_name: v1.7.0-${{ github.run_number }}
+          tag_name: v${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
